@@ -1,6 +1,6 @@
 # Experimental local packaging
 
-**Source-only prototypes, not supported installation/release or a recommendation for work-account use.** The [packaging tree](../packaging/README.md) has completed independent AI static review and bounded producer validation. No full makepkg lifecycle, clean-chroot, namcap, deployed-prefix install/removal, current live authentication or independent human acceptance is claimed.
+**Source-only prototypes, not supported installation/release or a recommendation for work-account use.** The [packaging tree](../packaging/README.md) has completed independent AI static review and bounded producer validation. A real local full makepkg checkpoint is recorded below; clean-chroot, namcap, dependency closure, deployed-prefix install/removal, current live authentication and independent human acceptance remain open.
 
 ## Layout and provider contract
 
@@ -19,8 +19,16 @@ python3 packaging/app/prepare-snapshot.py "$PWD" "$NEW_EXTERNAL_DIRECTORY"
 
 Set `NEW_EXTERNAL_DIRECTORY` to a nonexistent external directory. The helper selects real committed HEAD, reads template/wrapper blobs from that same commit (not working-copy edits or script location), archives that source, and derives the local version, input checksums and provenance. Missing committed inputs, existing output or output inside the checkout fail. Keep generated PKGBUILD/archive/provenance outside the input source; do not commit them into it. A local snapshot recipe is not a pinned public release recipe.
 
-The app template explicitly passes supplied CFLAGS/CXXFLAGS/LDFLAGS through qmake. Producer fresh builds/staging with explicit representative Arch flags verified compile/link receipts and staged PIE/full RELRO/nonexecutable stack plus bounded stack/FORTIFY evidence. Only staged copies were stripped. This is not universal hardening or runtime/stripped-app validation. App check validates desktop metadata; provider check validates static invariants. Neither substitutes for the six ordinary suites or stock client behavior.
+The app template explicitly passes supplied CFLAGS/CXXFLAGS/LDFLAGS through qmake. Producer fresh builds/staging with explicit representative Arch flags verified compile/link receipts and staged PIE/full RELRO/nonexecutable stack plus bounded stack/FORTIFY evidence. The later actual makepkg lifecycle also completed strip/debug splitting. This is not universal hardening or runtime/stripped-app validation. App check validates desktop metadata; provider check validates static invariants. Neither substitutes for the six ordinary suites or stock client behavior.
 
 Fresh isolated provider/app function-level build/check/package and staging evidence is retained separately. Relocated metadata-only version/buildconfig probes validate those paths, not deployed addin lookup. Missing tools or drift are blockers, not permission to fetch/install/disable features. Do not use `makepkg -s`, `-i`, sudo or database refresh as source-publication preparation.
 
-Before recommending install/submission: complete full makepkg/clean-chroot/package/dependency/license checks, approved install/removal/deployed provenance, current tenant/desktop/input/resize/hardware checks and practical human/user release/badge approval. See [verification limits](VERIFICATION.md).
+## Real local archives — 2026-10-02
+
+Fresh offline unprivileged **full makepkg lifecycles passed** for app source `f4424be9092ac5c3aa04c6e749911e8ed69a93a2` and the pinned provider, with unchanged source/packaging inputs. Audited isolated config and preseeded verified sources allowed retrieval/checksum/extraction/build/check/fakeroot packaging/strip/debug split and archive metadata creation without external network or installation. Explicit `--nodeps` means **dependency resolution is not proven**. This is not clean-chroot, reproducibility, installability or new code-validation proof for a documentation-only follow-up.
+
+Four local archives were produced: app **253,951 bytes**, provider **2,209,337 bytes**, plus separate app/provider debug archives. Bounded archive inspection checked paths/ownership, licenses/notices, wrapper/symlink, metadata, ten ELF/debug build-ID pairs, app hardening and loader paths without executing products. No binary artifacts are published or released; exhaustive license/debug-source coverage is not certified.
+
+Provider compiler-prefix-map receipts retain literal `/work/provider/src` in buildflags headers/buildconfig; archive BUILDINFO also records neutral build directories. These are neutral namespace paths, not private host paths, RPATHs or addin lookups. Accepted as non-blocking for the local archive checkpoint, **not a zero-build-path-bytes claim**; upstream reporting was not masked or changed. A synthetic PACKAGER email-form warning belongs only to the validation harness, not a release identity.
+
+Before recommending install/submission: complete clean-chroot/namcap/package/dependency/license checks, approved install/removal/deployed provenance, current tenant/desktop/input/resize/hardware checks and practical human/user release/badge approval. See [verification limits](VERIFICATION.md).

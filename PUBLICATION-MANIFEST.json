@@ -373,8 +373,8 @@
     },
     {
       "path": "docs/PACKAGING.md",
-      "bytes": 3778,
-      "sha256": "d2bf822a7c0f87476623f527161c5360f7acc5c7babed27769c1ab2db404a8d8"
+      "bytes": 5415,
+      "sha256": "5d1b7cb1634be7f70a13a184a9187f12a8543a9ad19494c8b91ad70a3c32c09f"
     },
     {
       "path": "docs/TESTING.md",
@@ -383,8 +383,8 @@
     },
     {
       "path": "docs/VERIFICATION.md",
-      "bytes": 4210,
-      "sha256": "1e4af772f4aef1cb4c55621185fdee2336fa261f43764e44b7274477c46922e9"
+      "bytes": 4995,
+      "sha256": "df8e1541c4c48d07987cc04d21e7980abc9b3e017ac7c5d1401933c3cfe1b101"
     },
     {
       "path": "tools/security/README.md",
@@ -403,13 +403,12 @@
     "browserauth_assertions": 205,
     "fresh_source_root_ordinary_build_and_all_six_suites": "passed; app not launched",
     "prior_sanitizer_checkpoint": "same totals; separate evidence, not rerun during curation",
-    "packaging": "reviewed experimental prototypes; bounded producer builds/staging, not complete makepkg/clean-chroot/deployment/live/human/legal certification"
+    "packaging": "2026-10-02: fresh offline unprivileged full makepkg lifecycles and bounded inspection passed at public source f4424be9092ac5c3aa04c6e749911e8ed69a93a2; four local app/provider/debug archives, --nodeps; neutral compiler-receipt paths retained, not dependency/clean-chroot/reproducibility/installability/deployment/live/human/legal certification"
   },
   "remaining_gates": [
-    "Explicit lead acceptance and public repository creation/push",
     "Public release coordinates only if separately approved; local helper derives actual committed source inputs",
-    "Full makepkg/clean-chroot/package/dependency/license checks",
-    "Approved install/removal/deployed provenance and current live/human/user release acceptance"
+    "Clean-chroot/namcap/package/dependency/license checks; dependency resolution not proven by --nodeps",
+    "Approved install/removal/deployed provenance and current live/hardware/human/user release acceptance"
   ],
   "manifest_self_hash": "Excluded to avoid recursive self-hash"
 }
