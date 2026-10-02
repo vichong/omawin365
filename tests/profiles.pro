@@ -1,0 +1,9 @@
+QT += core testlib
+QT -= gui
+CONFIG += console c++20 testcase
+CONFIG -= app_bundle
+TEMPLATE = app
+TARGET = tst_profiles
+INCLUDEPATH += ../src
+SOURCES += tst_profiles.cpp ../src/profilestore.cpp ../src/rdpprofile.cpp
+HEADERS += ../src/profilestore.h ../src/rdpprofile.h synthetic_profile.h

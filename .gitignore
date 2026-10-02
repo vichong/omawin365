@@ -1,0 +1,26 @@
+.build/
+.build-tests/
+*.o
+moc_*.cpp
+qrc_*.cpp
+.qmake.stash
+*.rdp
+*.rdpw
+*.log
+*.pem
+*.key
+.env
+.env.*
+compile_commands.json
+
+# Local coordination and credential/browser artifacts.
+/.memory/
+/.pi-herdsman/
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+/core
+core.*
+/browser-profile/
+/auth-state/

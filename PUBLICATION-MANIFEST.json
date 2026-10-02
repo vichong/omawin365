@@ -1,0 +1,415 @@
+{
+  "status": "Experimental curated source snapshot; no supported installation/release or recommended work-account use",
+  "strategy": "Fresh source snapshot with concise documentation",
+  "immutable_allowlist": [
+    {
+      "path": "LICENSE",
+      "bytes": 1065,
+      "sha256": "9da672fabb66ffefb13ac3917ad1015fd285ced397aa5eda4653e1f5c3bdd589"
+    },
+    {
+      "path": "Makefile",
+      "bytes": 1467,
+      "sha256": "25ce987e1a6ed0e125d9fc141fc6cc344710849f3eae24766a9247934c4c134b"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "bytes": 2989,
+      "sha256": "eb052db7b944d513725d5a1d750f3bbc763937d7131de1f91959755f2907ed5b"
+    },
+    {
+      "path": "assets/header.svg",
+      "bytes": 17572,
+      "sha256": "c7addebc5304bcbbc0c5cdce145fb4483910f13fa3ba3ba2c9c0bc48849076c4"
+    },
+    {
+      "path": "assets/logo.svg",
+      "bytes": 27933,
+      "sha256": "f3cf92ee9f39ffa5106aec8d1ff2bfe2031e1598e6cbca7f8be7d8ff271507f5"
+    },
+    {
+      "path": "assets/logo.txt",
+      "bytes": 3702,
+      "sha256": "53bab33577c9bab6a4a1b3ac1024760758d0a2fb9ad61e499d19239b7ea85293"
+    },
+    {
+      "path": "assets/omawin365.desktop",
+      "bytes": 306,
+      "sha256": "91c0cd894a98314013ccc72b054d468190c8a39dc66f2014d183a781c5b60123"
+    },
+    {
+      "path": "assets/omawin365.svg",
+      "bytes": 13771,
+      "sha256": "56544eb58bfd7a41681663d8b82f99efa1525ba32a700fa3d1b3c9bf94992938"
+    },
+    {
+      "path": "docs/banner.png",
+      "bytes": 87693,
+      "sha256": "3f99386ea7d38a5f78b45aded4795990e92c6657e89d9d4dd840bb102c29d8ec"
+    },
+    {
+      "path": "docs/banner.svg",
+      "bytes": 18909,
+      "sha256": "347c4b6a6b6a92b0fca308cf49ac71ce6ad92a1bc09ecd6224f38d791a55c46c"
+    },
+    {
+      "path": "licenses/omarchy-MIT.txt",
+      "bytes": 1063,
+      "sha256": "717ba1949502290f8e47688ae2e323acd06c8ca47aec9f7596b15f678c1af4a2"
+    },
+    {
+      "path": "omawin365.pro",
+      "bytes": 669,
+      "sha256": "bdff13978fcb0e05a7526f1efdfa350b797c6bda0116fdd6ff749fa31ba6a378"
+    },
+    {
+      "path": "resources.qrc",
+      "bytes": 495,
+      "sha256": "63334c44ca6dcc111da96f22e5228b478cc517bafbf2acd5d61fc0ad5a24c357"
+    },
+    {
+      "path": "src/browserauth.cpp",
+      "bytes": 58273,
+      "sha256": "7440f4ed93b2435779b0ba02f7bdc404f6f6a1e9e978f3526d42910a6e83e8d9"
+    },
+    {
+      "path": "src/browserauth.h",
+      "bytes": 1225,
+      "sha256": "38d4bbfeee6daf865301bf7e5430455f8c66ebbc2087309f718ee6d9b3988916"
+    },
+    {
+      "path": "src/main.cpp",
+      "bytes": 8251,
+      "sha256": "f06c334e070d9ffd3a640940bd09ae2719b2b39654de819596c22f8fe634bb4b"
+    },
+    {
+      "path": "src/oauthcontract.cpp",
+      "bytes": 4785,
+      "sha256": "e277627979c3775a68e0e8c10c588966ccbbf032b0ee3c7dc2a7a8d8d9b38440"
+    },
+    {
+      "path": "src/oauthcontract.h",
+      "bytes": 1216,
+      "sha256": "15f5f4eb081447c68f5eb31386e526e6bfaa01d9aaefdd0044f5a663d9cb42fb"
+    },
+    {
+      "path": "src/portal.js",
+      "bytes": 7376,
+      "sha256": "4e69c99983676ee38a45e2862568ae835758a6d56a7fe85232ad4440bf078d2e"
+    },
+    {
+      "path": "src/profilestore.cpp",
+      "bytes": 9820,
+      "sha256": "af80453abe71997e4f42c4438a81343b81c5127e7c0adf8c84ecaa1ec320967c"
+    },
+    {
+      "path": "src/profilestore.h",
+      "bytes": 810,
+      "sha256": "5e288ceb2a60f5904e15c58d0b663872cfecd810669f6211fadcd07a24a28a61"
+    },
+    {
+      "path": "src/promptparser.cpp",
+      "bytes": 13659,
+      "sha256": "22a48c5191c69ffe775c421577c9c35965895a73026759e3a28f829fcdef1440"
+    },
+    {
+      "path": "src/promptparser.h",
+      "bytes": 1946,
+      "sha256": "aea9cecbf16a6f5aaf21e6e3b21f019895f884b3722a986b33f4844c1441910a"
+    },
+    {
+      "path": "src/rdpprofile.cpp",
+      "bytes": 10986,
+      "sha256": "37014829d34c94d65806c6d9250ced9cf03390e0bd50c0bd21ea3ebbce8cee2b"
+    },
+    {
+      "path": "src/rdpprofile.h",
+      "bytes": 467,
+      "sha256": "9b1b405aec47612def76114729572aa03e33849b6f94460434bd538732d1b2ee"
+    },
+    {
+      "path": "src/session.cpp",
+      "bytes": 43842,
+      "sha256": "63b981e408b937a9ae395049deb9c83e11d5171fe24061854b6a3b84a5b18a20"
+    },
+    {
+      "path": "src/session.h",
+      "bytes": 1494,
+      "sha256": "f35cb4820271aa756d0c8323425b5377093efb4c90d07303a697208bdc177e1b"
+    },
+    {
+      "path": "src/theme.cpp",
+      "bytes": 21623,
+      "sha256": "07ad7b50d600a8acb5e5c6cb16b29e91d61952ac82cf4e7be64ec974d25313b7"
+    },
+    {
+      "path": "src/theme.h",
+      "bytes": 763,
+      "sha256": "98783d8062c77a5010de49fa63b782f0b3d065ef7941e60510908fb10c957dfe"
+    },
+    {
+      "path": "src/window.cpp",
+      "bytes": 43896,
+      "sha256": "a28f2a7df9d72ac651f04bf94e20f617cd0ccb749435be714eb23ad4eaf23834"
+    },
+    {
+      "path": "src/window.h",
+      "bytes": 2668,
+      "sha256": "6340c61130750dd635063cd428a7fff7853236d81941ad6acbe6a03f1339eedf"
+    },
+    {
+      "path": "src/windowpresentation.cpp",
+      "bytes": 17382,
+      "sha256": "f65f3c28ce53e093c2f261c703fa359228213208399cd64ca0485d5b15829d49"
+    },
+    {
+      "path": "src/windowpresentation.h",
+      "bytes": 2882,
+      "sha256": "d2da41e87c07386a83461b9b385dfd23a725dd3db05acca4499f543ada1b3215"
+    },
+    {
+      "path": "tests/auth_composed.h",
+      "bytes": 347,
+      "sha256": "f688a3fc6d3f75d2018fe0e4a0d5b76009e9c883bd59312d135e570533519546"
+    },
+    {
+      "path": "tests/browserauth.pro",
+      "bytes": 350,
+      "sha256": "964a78a6f3503501f7d8293c7b380e2540e59ec061f7346712982219448bd9fa"
+    },
+    {
+      "path": "tests/browserauth.qrc",
+      "bytes": 116,
+      "sha256": "8722fe645727df36a5951428b71f08d0fd4d83a5474e6fc1ae68c06b13590b46"
+    },
+    {
+      "path": "tests/browserauth_public_tests.h",
+      "bytes": 56139,
+      "sha256": "00328beba3f629007fd0080dd9b0b8aef9e0d2c767053dd90390b8563baabc5c"
+    },
+    {
+      "path": "tests/browserauth_test.cpp",
+      "bytes": 25402,
+      "sha256": "b8498d6c7e76b538d8d1ec911a9b1d54c7381eadcc5a66fff8f0661e52e38e5f"
+    },
+    {
+      "path": "tests/certificate_fixture.h",
+      "bytes": 2242,
+      "sha256": "fa63e3ed2678b720976ef79f650a3f8097bc6310365a69febc303e6c6a936b23"
+    },
+    {
+      "path": "tests/profiles.pro",
+      "bytes": 289,
+      "sha256": "e1b3b7b96cfdb5b7d1307de4b27c04d980726cde768c9a1880f1cec21be54346"
+    },
+    {
+      "path": "tests/promptparser.pro",
+      "bytes": 314,
+      "sha256": "8122daf1e710b8065172ce7bbe68b0ae26200bfbbb171d96795fc717ceeb715c"
+    },
+    {
+      "path": "tests/session.pro",
+      "bytes": 431,
+      "sha256": "5b8a8cb9627811108d6b29df244e0a8fb4bc99bc6dcfea45a0c1835d85c0a6aa"
+    },
+    {
+      "path": "tests/session_fixture.h",
+      "bytes": 7539,
+      "sha256": "56ee22e41e9df1f7c35a78351f2fc95d231e1ae879e86052ea7997a866da598f"
+    },
+    {
+      "path": "tests/session_fixture.py",
+      "bytes": 3777,
+      "sha256": "fc3f9de013c09cf038bcb79862045647ce20e443ecdd99f736b22cef25e13630"
+    },
+    {
+      "path": "tests/session_public.pro",
+      "bytes": 699,
+      "sha256": "2df7a5546d79ff15b8f1f49ae1c412b147d8ae6446e6090970c951ab2831249f"
+    },
+    {
+      "path": "tests/session_public_cases.h",
+      "bytes": 101725,
+      "sha256": "4eda95ee7c1327dfe17bd795bae40bdeba6bb0da96feba3f39344278eaedbbe0"
+    },
+    {
+      "path": "tests/session_public_tests.cpp",
+      "bytes": 1808,
+      "sha256": "2881cdf5ba5660dbbdd6e8a601e3451aade1bdac052afcfc682f15e491c4a5c2"
+    },
+    {
+      "path": "tests/synthetic_profile.h",
+      "bytes": 2426,
+      "sha256": "b2d98fff6019fbb02a7e703bc07a424db4119ac7e255a8bc8bdfab3716bcec26"
+    },
+    {
+      "path": "tests/tst_profiles.cpp",
+      "bytes": 46906,
+      "sha256": "b26c959b5557ed72d8155884884af12eaf3036289d68a3e94b53ee6c117a3c53"
+    },
+    {
+      "path": "tests/tst_promptparser.cpp",
+      "bytes": 30267,
+      "sha256": "e72d35116aa3bf0594f9e3d7e29e86e8197c20417376b600cadec624ef3b890a"
+    },
+    {
+      "path": "tests/tst_session.cpp",
+      "bytes": 15737,
+      "sha256": "3e8983b922f432728757b22cab526c88ed4e792c7ce04150fc35590d92be9bb5"
+    },
+    {
+      "path": "tests/tst_window.cpp",
+      "bytes": 54282,
+      "sha256": "f76bfad12e7080f2ca3c9a5219e6668cf04669179302df68c3ae6e3d5ac8abbd"
+    },
+    {
+      "path": "tests/window.pro",
+      "bytes": 550,
+      "sha256": "875ad60f5fb7381106af1667181981699e45e4e911e2f012f5450c4fd3bd33ae"
+    },
+    {
+      "path": "tests/window_adapters.cpp",
+      "bytes": 1637,
+      "sha256": "ad8d45e15d2dcdafcf1a97642ab94863a11d47e1c6025f725c8b5e0a46985e63"
+    },
+    {
+      "path": "tests/window_fixture.h",
+      "bytes": 702,
+      "sha256": "f94eb8866b833e6c0205c77f72c2ac590587127ca393999c1c10dbfad39fa36f"
+    },
+    {
+      "path": "tools/logo.py",
+      "bytes": 10501,
+      "sha256": "ac728927210a1893e479c18158a9f56fb9cde9071cabe090e37cbce73de7ff97"
+    },
+    {
+      "path": "tools/security/fuzz_profiles.cpp",
+      "bytes": 3878,
+      "sha256": "8ed4252c38d73112a358e1bcf2ab8406cd5bcce1c158be2faf91308d9d3d47ea"
+    },
+    {
+      "path": "tools/security/fuzz_promptparser.cpp",
+      "bytes": 4392,
+      "sha256": "4e2b520569219111728a9dfd1268e899500853a7554827dd3508af2bf90a39eb"
+    },
+    {
+      "path": "tools/security/run-fuzz.sh",
+      "bytes": 6117,
+      "sha256": "9c5d96af0a7c206e80c8d5f7f1da152fbf0ce54c54f22389cd22c1fb88ef7983"
+    },
+    {
+      "path": "tools/security/seed_corpus.py",
+      "bytes": 6309,
+      "sha256": "2122b3b8148dcfca70c9395443f9b69f0e5bacce998a087bf3770bedeb112a99"
+    }
+  ],
+  "packaging_allowlist": [
+    {
+      "path": "packaging/README.md",
+      "bytes": 8675,
+      "sha256": "3f10e04cb80ee0eb0202eba4707e76d2e5617ef31ba6575b556f2d17de1d0e80"
+    },
+    {
+      "path": "packaging/app/PKGBUILD.in",
+      "bytes": 1666,
+      "sha256": "21cd328e88d691d480f66645d73bc1187f4da6701bf50ea7ecc497b0998af137"
+    },
+    {
+      "path": "packaging/app/omawin365-launcher",
+      "bytes": 560,
+      "sha256": "0cec07d6251e9f45da723e1a5a03ff67dbcda6d9850add8b50ad4356e879c6db"
+    },
+    {
+      "path": "packaging/app/prepare-snapshot.py",
+      "bytes": 3391,
+      "sha256": "8f89a46ebe5a97fbea1870561161c7d05736474b1512f18127bc5236845d90c1"
+    },
+    {
+      "path": "packaging/freerdp/PKGBUILD",
+      "bytes": 2323,
+      "sha256": "a0b4376917a62c483f5456d1b9f72da38b512db2ee69fc7fee5237b669f99c27"
+    },
+    {
+      "path": "packaging/freerdp/accepted-features.txt",
+      "bytes": 6074,
+      "sha256": "a22256b9f5f916cbf103eeb4fae8110ebc89c22125437a223a8aea6f7fed16fc"
+    },
+    {
+      "path": "packaging/freerdp/check-contract.py",
+      "bytes": 2761,
+      "sha256": "90fff62b295aa2d517797af6da997a324612a3c9669883b220eaec0282531d20"
+    },
+    {
+      "path": "packaging/freerdp/configure.sh",
+      "bytes": 745,
+      "sha256": "cf5b269e8d58804fca9aeccb58a1683499df04ba1ddc2b86cfef1bbe4424227e"
+    },
+    {
+      "path": "packaging/freerdp/uwac-NOTICES.txt",
+      "bytes": 16284,
+      "sha256": "fb1fb33971be8d78ec542c502f0f6c93f1b67228692cb160c394ef239d94cf64"
+    }
+  ],
+  "authored_allowlist": [
+    {
+      "path": ".gitignore",
+      "bytes": 280,
+      "sha256": "3321b3dc4dca2a183eee862bc65e1853642fbedd55a50e77f0b5c121ed00ab53"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "bytes": 1127,
+      "sha256": "b6eb6105b6d9ee9a252b86cccda49cb65eb51c2e29197c19b0ce697a08dfd06b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2908,
+      "sha256": "1463657564f74b1e37121b3e0ff478fb1d0454c9254c976ea8154693a8783770"
+    },
+    {
+      "path": "docs/BOUNDARIES.md",
+      "bytes": 4014,
+      "sha256": "4cb1ecf3bf67e73e221be07a49c622c972bb99a4c8cecdd7ff1af5aa410fa071"
+    },
+    {
+      "path": "docs/PACKAGING.md",
+      "bytes": 3778,
+      "sha256": "d2bf822a7c0f87476623f527161c5360f7acc5c7babed27769c1ab2db404a8d8"
+    },
+    {
+      "path": "docs/TESTING.md",
+      "bytes": 2128,
+      "sha256": "dc75a9f333eb6ac69168962ad68cfffd32e3ef421c39f0b45e9d6f5a06710d09"
+    },
+    {
+      "path": "docs/VERIFICATION.md",
+      "bytes": 4210,
+      "sha256": "1e4af772f4aef1cb4c55621185fdee2336fa261f43764e44b7274477c46922e9"
+    },
+    {
+      "path": "tools/security/README.md",
+      "bytes": 728,
+      "sha256": "08e2394cd8f3d0f04b53be33a31db61388a49c7ce35df611244be5975f006c39"
+    }
+  ],
+  "excluded_classes": [
+    "Development Git history/metadata and internal review/session provenance",
+    "Internal handoff/context/archive documents and raw verification transcripts",
+    "Coordination directories, build outputs, generated local recipes/archives",
+    "Real connection profiles, credentials, browser state and personal runtime data"
+  ],
+  "verification_summary": {
+    "ordinary_qttest_passes": 1830,
+    "browserauth_assertions": 205,
+    "fresh_source_root_ordinary_build_and_all_six_suites": "passed; app not launched",
+    "prior_sanitizer_checkpoint": "same totals; separate evidence, not rerun during curation",
+    "packaging": "reviewed experimental prototypes; bounded producer builds/staging, not complete makepkg/clean-chroot/deployment/live/human/legal certification"
+  },
+  "remaining_gates": [
+    "Explicit lead acceptance and public repository creation/push",
+    "Public release coordinates only if separately approved; local helper derives actual committed source inputs",
+    "Full makepkg/clean-chroot/package/dependency/license checks",
+    "Approved install/removal/deployed provenance and current live/human/user release acceptance"
+  ],
+  "manifest_self_hash": "Excluded to avoid recursive self-hash"
+}

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=OMAWIN365
+GenericName=Windows 365 Cloud PC
+Comment=Windows 365 Cloud PCs for Omarchy
+Exec=omawin365
+TryExec=omawin365
+Icon=omawin365
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=Windows;365;Cloud;PC;RDP;Omarchy;
+StartupNotify=true
+StartupWMClass=omawin365

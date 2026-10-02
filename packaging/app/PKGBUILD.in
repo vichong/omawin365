@@ -1,0 +1,40 @@
+# TEMPLATE ONLY. Generate outside the checkout with prepare-snapshot.py.
+# No public release coordinates; committed HEAD snapshot, not working-tree edits.
+pkgname=omawin365
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc='Experimental Windows 365 client for Omarchy (local source snapshot)'
+arch=('x86_64')
+license=('MIT')
+depends=('qt6-base' 'qt6-wayland' 'qt6-svg' 'libx11' 'xorg-xwayland'
+         'omawin365-freerdp=3.32.1' 'chromium' 'fontconfig' 'glibc' 'libgcc' 'libstdc++')
+checkdepends=('desktop-file-utils')
+source=('omawin365-source.tar' 'omawin365-launcher')
+sha256sums=('@ARCHIVE_SHA256@'
+            '@LAUNCHER_SHA256@')
+
+build() {
+  cd "$srcdir/omawin365"
+  mkdir -p .build
+  cd .build
+  qmake6 ../omawin365.pro CONFIG+=release \
+    "QMAKE_CFLAGS_RELEASE=$CFLAGS" "QMAKE_CXXFLAGS_RELEASE=$CXXFLAGS" \
+    "QMAKE_LFLAGS_RELEASE=$LDFLAGS" || return 1
+  make -j2
+}
+
+check() {
+  # Packaging metadata only, not the offline Qt suite or live acceptance.
+  desktop-file-validate "$srcdir/omawin365/assets/omawin365.desktop"
+}
+
+package() {
+  cd "$srcdir/omawin365"
+  install -Dm755 .build/omawin365 "$pkgdir/usr/lib/omawin365/omawin365"
+  install -Dm755 "$srcdir/omawin365-launcher" "$pkgdir/usr/bin/omawin365"
+  install -Dm644 assets/omawin365.desktop "$pkgdir/usr/share/applications/omawin365.desktop"
+  install -Dm644 assets/omawin365.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/omawin365.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
+  install -Dm644 licenses/omarchy-MIT.txt "$pkgdir/usr/share/licenses/$pkgname/omarchy-MIT.txt"
+}

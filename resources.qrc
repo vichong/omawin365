@@ -1,0 +1,14 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file alias="omawin365.svg">assets/omawin365.svg</file>
+    <file alias="header.svg">assets/header.svg</file>
+  </qresource>
+  <qresource prefix="/portal">
+    <file alias="acquisition.js">src/portal.js</file>
+  </qresource>
+  <qresource prefix="/about">
+    <file alias="LICENSE">LICENSE</file>
+    <file alias="THIRD_PARTY_NOTICES.md">THIRD_PARTY_NOTICES.md</file>
+    <file alias="omarchy-MIT.txt">licenses/omarchy-MIT.txt</file>
+  </qresource>
+</RCC>

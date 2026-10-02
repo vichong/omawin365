@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/portal">
+    <file alias="acquisition.js">../src/portal.js</file>
+  </qresource>
+</RCC>

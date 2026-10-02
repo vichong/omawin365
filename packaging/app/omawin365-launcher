@@ -1,0 +1,15 @@
+#!/bin/sh
+# Only this process tree sees the private provider. Never fall back to distro FreeRDP.
+set -eu
+provider=/usr/lib/omawin365/freerdp/bin
+if [ ! -x "$provider/xfreerdp3" ]; then
+    printf '%s\n' 'OMAWIN365: private FreeRDP provider missing or not executable; reinstall omawin365-freerdp.' >&2
+    exit 127
+fi
+if [ ! -x /usr/lib/omawin365/omawin365 ]; then
+    printf '%s\n' 'OMAWIN365: private application binary missing or not executable.' >&2
+    exit 127
+fi
+PATH="$provider:${PATH:-/usr/bin:/bin}"
+export PATH
+exec /usr/lib/omawin365/omawin365 "$@"
