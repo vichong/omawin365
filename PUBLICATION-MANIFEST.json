@@ -306,8 +306,8 @@
   "packaging_allowlist": [
     {
       "path": "packaging/README.md",
-      "bytes": 8675,
-      "sha256": "3f10e04cb80ee0eb0202eba4707e76d2e5617ef31ba6575b556f2d17de1d0e80"
+      "bytes": 9870,
+      "sha256": "59b3be6499772d42db67255d3a36a3b6b5dc4d9cbb7e4a7467b1bc77832479a6"
     },
     {
       "path": "packaging/app/PKGBUILD.in",
@@ -373,8 +373,8 @@
     },
     {
       "path": "docs/PACKAGING.md",
-      "bytes": 5415,
-      "sha256": "5d1b7cb1634be7f70a13a184a9187f12a8543a9ad19494c8b91ad70a3c32c09f"
+      "bytes": 6206,
+      "sha256": "2df4e7f82ec6759fa7bd8ac5cf4eafa38ce9bd44bbe3d5b7c23481d38f97efc7"
     },
     {
       "path": "docs/TESTING.md",
@@ -383,8 +383,8 @@
     },
     {
       "path": "docs/VERIFICATION.md",
-      "bytes": 4995,
-      "sha256": "df8e1541c4c48d07987cc04d21e7980abc9b3e017ac7c5d1401933c3cfe1b101"
+      "bytes": 5253,
+      "sha256": "53e8c50da0d3a86053dee2ef577234b8d45a6cc572d0f248e458d7c61cef3619"
     },
     {
       "path": "tools/security/README.md",
@@ -403,12 +403,12 @@
     "browserauth_assertions": 205,
     "fresh_source_root_ordinary_build_and_all_six_suites": "passed; app not launched",
     "prior_sanitizer_checkpoint": "same totals; separate evidence, not rerun during curation",
-    "packaging": "2026-10-02: fresh offline unprivileged full makepkg lifecycles and bounded inspection passed at public source f4424be9092ac5c3aa04c6e749911e8ed69a93a2; four local app/provider/debug archives, --nodeps; neutral compiler-receipt paths retained, not dependency/clean-chroot/reproducibility/installability/deployment/live/human/legal certification"
+    "packaging": "2026-10-03: normal declared-dependency devtools working-root builds and independent bounded static archive acceptance passed at source 02fbb8af242de5f8d4e9cdc47bf634d1ac51f189; cloned completed-base lineage, four local main/debug archives; static-only namcap findings classified, not lint-clean/reproducibility/installability/dynamic-runtime/license/human certification"
   },
   "remaining_gates": [
     "Public release coordinates only if separately approved; local helper derives actual committed source inputs",
-    "Clean-chroot/namcap/package/dependency/license checks; dependency resolution not proven by --nodeps",
-    "Approved install/removal/deployed provenance and current live/hardware/human/user release acceptance"
+    "Complete dynamic/plugin dependency and license closure; bounded static namcap is not default-lint PASS",
+    "Approved host install/removal/deployed-prefix/addin provenance and current live/hardware/human/user release acceptance"
   ],
   "manifest_self_hash": "Excluded to avoid recursive self-hash"
 }

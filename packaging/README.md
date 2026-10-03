@@ -1,6 +1,6 @@
 # Experimental local packaging
 
-**Not a release, supported installation, AUR/OPR submission or publication approval.** These are auditable local prototypes. No clean-chroot/package-manager install/removal or current live acceptance is claimed. Do not use `makepkg -s`, `-i`, sudo or database refresh as part of preparation.
+**Not a release, supported installation, AUR/OPR submission or publication approval.** These are auditable local prototypes. Normal declared-dependency clean working-root builds and bounded static archive acceptance are complete; host package-manager install/removal and current live acceptance remain open. Do not use `makepkg -s`, `-i`, sudo or database refresh as part of preparation.
 
 ## Layout and migration
 
@@ -35,7 +35,7 @@ Set `NEW_EXTERNAL_DIRECTORY` to a new, nonexistent directory outside the checkou
 
 Copy the complete `packaging/` tree into an approved curated snapshot; no private commit or machine path is hardcoded in the template/helper. Generate only after its own committed source exists. Generated LOCAL recipes are not public release recipes; public pinned coordinates/tag/version and actual public artifact checksums remain a separate decision.
 
-The app build explicitly passes makepkg CFLAGS, CXXFLAGS and LDFLAGS to qmake release variables, then make -j2. Validation used explicit representative x86-64 Arch hardening flags without reading host makepkg configuration: compile/link receipts preserve them, staged ELF is PIE/full RELRO/nonexecutable stack, stack-protector and fortified imports are present, and a compiled object contains endbr64. Compiler flag receipts are not proof of universal hardening coverage or runtime behavior. Only staged copies are stripped; original binaries retained.
+The app build explicitly passes makepkg CFLAGS, CXXFLAGS and LDFLAGS to qmake release variables, then make -j2. Validation used explicit representative x86-64 Arch hardening flags without reading host makepkg configuration: compile/link receipts preserve them, staged ELF is PIE/full RELRO/nonexecutable stack, stack-protector and fortified imports are present, and a compiled object contains endbr64. Compiler flag receipts are not proof of universal hardening coverage or runtime behavior. Actual makepkg also completed strip/debug splitting; this does not imply runtime validation.
 
 App `check()` validates desktop metadata, not the complete six-suite procedure. Run offline suites separately with their private tmpfs runtime/display prerequisites; generic clean-chroot `make test` is not implied.
 
@@ -43,4 +43,8 @@ App `check()` validates desktop metadata, not the complete six-suite procedure. 
 
 Fresh provider recipe build/check/package and generated app build/check/package passed locally in isolation. Source/recipe checksums, shell/metadata parsing, invariant failure controls, staged paths/permissions/licenses and no build-temp RPATH checks passed. Metadata-only provider version/buildconfig passed under private HOME, hidden host stores/sockets, fresh /dev, no network/display/LD_LIBRARY_PATH. Relocated staging metadata does **not** establish addin lookup at actual deployment prefix. No real app/GUI/browser, full client/TLS/device/addin startup, current live authentication or hardware retries were run. No new offline DD/sanitizer/full-suite claim.
 
-Complete makepkg fetch/archive/strip/debug lifecycle, clean-chroot provenance, namcap, complete license/dependency closure and approved install/removal are still outstanding. Lead independent review precedes adoption. Public source approval/coordinates, deployed provenance, coordinated tenant/desktop/input/resize/hardware acceptance and practical human/user release approval remain separate gates. Nothing here authorizes network, install, deployment, publication or submission.
+As of 2026-10-03, normal declared-dependency devtools builds and independent bounded static acceptance completed for provider and app source `02fbb8af242de5f8d4e9cdc47bf634d1ac51f189`: four local main/debug archives, with canonical numeric and named root ownership, safe layout/MTREE, attribution, ELF/loader-path/debug-pair checks and app hardening. Working roots clone a previously completed base, not pristine bootstrap or reproducible-build proof. Provider 229 invariants/jansson/SSO OFF/camera OFF passed; app check remains desktop metadata only, not a fresh full-suite run inside chroot.
+
+Static namcap excludes `unusedsodepends` because it executes product ELFs through ldd. Provider six dependency warnings, one missing Maintainer tag, 152 debug empty directories and nine paired detached-debug symlink false positives; app eight dependency warnings and one paired false positive are classified nonblocking. Not lint-clean/default-namcap PASS; preserve intended optional/plugin dependencies. Neutral compiler-prefix-map receipt paths remain, not loader/addin lookups or a zero-build-path claim.
+
+Complete dynamic/plugin dependency and license closure, approved host install/removal/deployed-prefix/addin checks, current tenant/desktop/input/resize/hardware acceptance and practical human/user release approval remain separate gates. Source publication is experimental, not supported installation or work-account recommendation. No local binaries are uploaded or released. Nothing here authorizes network, install, deployment or submission.
