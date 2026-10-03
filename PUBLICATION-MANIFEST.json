@@ -306,8 +306,8 @@
   "packaging_allowlist": [
     {
       "path": "packaging/README.md",
-      "bytes": 9870,
-      "sha256": "59b3be6499772d42db67255d3a36a3b6b5dc4d9cbb7e4a7467b1bc77832479a6"
+      "bytes": 10920,
+      "sha256": "9b43a80f401cb4e2a35de0615227d8ffdba5957a93479d9ce2f409e04208284c"
     },
     {
       "path": "packaging/app/PKGBUILD.in",
@@ -373,8 +373,8 @@
     },
     {
       "path": "docs/PACKAGING.md",
-      "bytes": 6206,
-      "sha256": "2df4e7f82ec6759fa7bd8ac5cf4eafa38ce9bd44bbe3d5b7c23481d38f97efc7"
+      "bytes": 7865,
+      "sha256": "1ba0b4268137b59f1b80b6ce2568ffd28342313338c2510efcbeca4f73c8a768"
     },
     {
       "path": "docs/TESTING.md",
@@ -383,8 +383,8 @@
     },
     {
       "path": "docs/VERIFICATION.md",
-      "bytes": 5253,
-      "sha256": "53e8c50da0d3a86053dee2ef577234b8d45a6cc572d0f248e458d7c61cef3619"
+      "bytes": 6502,
+      "sha256": "7afed2b266cda88823f034f5a2738718e87ddb5d116c3aa9841aa37ee8013aad"
     },
     {
       "path": "tools/security/README.md",
@@ -403,12 +403,13 @@
     "browserauth_assertions": 205,
     "fresh_source_root_ordinary_build_and_all_six_suites": "passed; app not launched",
     "prior_sanitizer_checkpoint": "same totals; separate evidence, not rerun during curation",
-    "packaging": "2026-10-03: normal declared-dependency devtools working-root builds and independent bounded static archive acceptance passed at source 02fbb8af242de5f8d4e9cdc47bf634d1ac51f189; cloned completed-base lineage, four local main/debug archives; static-only namcap findings classified, not lint-clean/reproducibility/installability/dynamic-runtime/license/human certification"
+    "packaging": "2026-10-03: normal declared-dependency devtools working-root builds and independent bounded static archive acceptance passed at source 02fbb8af242de5f8d4e9cdc47bf634d1ac51f189; cloned completed-base lineage, four local main/debug archives; static-only namcap findings classified, not lint-clean/reproducibility/installability/dynamic-runtime/license/human certification",
+    "host_metadata": "2026-10-03: one-host exact-two-main-package experimental installation and independent installed identity/scoped invariants accepted; four isolated nonroot metadata receipts passed at artifact source02fbb8af242de5f8d4e9cdc47bf634d1ac51f189; packages remain installed, removal/GUI/client/addin/live/human/release gates not closed"
   },
   "remaining_gates": [
     "Public release coordinates only if separately approved; local helper derives actual committed source inputs",
     "Complete dynamic/plugin dependency and license closure; bounded static namcap is not default-lint PASS",
-    "Approved host install/removal/deployed-prefix/addin provenance and current live/hardware/human/user release acceptance"
+    "Separately approved removal lifecycle/functional deployed app-provider discovery/addins and current GUI/live/hardware/human/user release acceptance"
   ],
   "manifest_self_hash": "Excluded to avoid recursive self-hash"
 }
