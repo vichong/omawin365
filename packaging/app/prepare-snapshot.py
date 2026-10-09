@@ -10,11 +10,8 @@ import sys
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
-        raise ValueError('usage: prepare-snapshot.py CHECKOUT NEW-OUTSIDE-DIRECTORY [BASE-VERSION]')
-    base = sys.argv[3] if len(sys.argv) == 4 else '0.0.0'
-    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', base):
-        raise ValueError('BASE-VERSION must look like 0.0.10')
+    if len(sys.argv) != 3:
+        raise ValueError('usage: prepare-snapshot.py CHECKOUT NEW-OUTSIDE-DIRECTORY')
     checkout = Path(sys.argv[1]).resolve(strict=True)
     out = Path(sys.argv[2]).resolve()
     env = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null')
@@ -29,6 +26,19 @@ def main():
     # Select a real application commit, not an unrelated repository.
     git('cat-file', '-e', commit + ':omawin365.pro')
     git('cat-file', '-e', commit + ':src/session.cpp')
+    # VERSION (e.g. 0.1.0-rc.2) is the release version. At its v<VERSION> tag the package is
+    # that release; any other commit is a local build, VERSION+local.<commit>.
+    release = git('cat-file', 'blob', commit + ':VERSION').decode().strip()
+    match = re.fullmatch(r'([0-9]+\.[0-9]+\.[0-9]+)(?:-rc\.([0-9]+))?', release)
+    if not match:
+        raise ValueError('VERSION must look like 0.1.0 or 0.1.0-rc.2')
+    tags = subprocess.run(['git', '-C', str(checkout), 'tag', '--points-at', commit],
+                          env=env, capture_output=True, text=True, check=True).stdout.split()
+    tagged = ('v' + release) in tags
+    pkgver = match.group(1) + ('rc' + match.group(2) if match.group(2) else '')
+    if not tagged:
+        pkgver += '.local' + commit[:16]
+    app_version = release if tagged else release + '+local.' + commit[:12]
     template_path = 'packaging/app/PKGBUILD.in'
     launcher_path = 'packaging/app/omawin365-launcher'
     template_bytes = git('cat-file', 'blob', commit + ':' + template_path)
@@ -44,7 +54,7 @@ def main():
     with archive.open('rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
     launcher_digest = hashlib.sha256(launcher).hexdigest()
-    values = {'@PKGVER@': base + '.local' + commit[:16], '@ARCHIVE_SHA256@': digest,
+    values = {'@PKGVER@': pkgver, '@APPVERSION@': app_version, '@ARCHIVE_SHA256@': digest,
               '@LAUNCHER_SHA256@': launcher_digest}
     for key, value in values.items():
         if template.count(key) != 1:

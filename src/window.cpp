@@ -361,8 +361,11 @@ void Window::showAbout()
     auto* layout = new DialogLayout(prompt, m_theme);
     auto* content = layout->content();
     layout->details->addWidget(new BrandingHeader(m_theme, content, 1.25));
-    layout->details->addWidget(label(QStringLiteral("Version %1 · pre-release")
-        .arg(QCoreApplication::applicationVersion()), content, "title"));
+    // 0.1.0 is a release, 0.1.0-rc.2 a pre-release, anything with + a development build.
+    const QString version = QCoreApplication::applicationVersion();
+    const QString stage = version.contains(u'+') ? QStringLiteral(" · development build")
+        : version.contains(u'-') ? QStringLiteral(" · pre-release") : QString();
+    layout->details->addWidget(label(QStringLiteral("Version %1%2").arg(version, stage), content, "title"));
     layout->details->addWidget(label(QStringLiteral("Windows 365 Cloud PCs for Omarchy."), content));
     layout->details->addWidget(label(QStringLiteral("© 2026 Vic Hong · MIT licence\nProvided as-is, without warranty."), content));
     layout->details->addWidget(label(QStringLiteral("Wordmark letterforms: David Heinemeier Hansson (MIT).\nWindows 365 mark: Microsoft trademark.\nUses separately installed Qt, FreeRDP and Chromium."), content, "muted"));

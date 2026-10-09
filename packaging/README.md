@@ -15,11 +15,11 @@ Local Arch packaging for OMAWIN365. See [docs/PACKAGING.md](../docs/PACKAGING.md
 - `PKGBUILD.in` is a template; `prepare-snapshot.py` turns it into a real recipe:
 
   ```sh
-  python3 packaging/app/prepare-snapshot.py "$PWD" /new/empty/dir [BASE-VERSION]
+  python3 packaging/app/prepare-snapshot.py "$PWD" /new/empty/dir
   ```
 
   It archives the **committed** `HEAD` (never working-tree edits), reads the template and wrapper from that same commit, and writes `PKGBUILD`, the source archive, the wrapper and `snapshot.json` with their checksums. The output directory must be new and outside the checkout.
-- `BASE-VERSION` (default `0.0.0`) gives `pkgver=<base>.local<commit>`. The build passes `<pkgver>-<pkgrel>` to qmake as `OMAWIN365_VERSION`, which `omawin365 --version` and About show.
+- The version comes from the `VERSION` file. At its `v<VERSION>` tag the package is that release (`0.1.0-rc.2` gives `pkgver=0.1.0rc2`). Any other commit gives `pkgver=<release>.local<commit>`. The build passes the version to qmake as `OMAWIN365_VERSION`, which `omawin365 --version` and About show.
 - The build passes makepkg's `CFLAGS`, `CXXFLAGS` and `LDFLAGS` to qmake. `check()` validates the desktop entry only; run `make test` from a checkout for the full suites.
 - **Install layout:** `/usr/lib/omawin365/omawin365`, plus the `/usr/bin/omawin365` wrapper (`omawin365-launcher`). The wrapper puts the private FreeRDP first on the app's own `PATH`, without `LD_LIBRARY_PATH`, and refuses to start if the provider is missing. Also installed: the desktop entry, the icon, the MIT licence, third-party notices and the Omarchy wordmark attribution.
 

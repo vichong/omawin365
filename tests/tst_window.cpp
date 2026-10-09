@@ -1526,20 +1526,30 @@ private slots:
         QVERIFY(!button(window.get(), "Rename…")->isEnabled());
         QCOMPARE(controls.stops, 0);
     }
+    void aboutShowsBuildVersion_data()
+    {
+        QTest::addColumn<QString>("version");
+        QTest::addColumn<QString>("shown");
+        QTest::newRow("release") << "0.1.0" << "Version 0.1.0";
+        QTest::newRow("pre-release") << "0.1.0-rc.2" << "Version 0.1.0-rc.2 · pre-release";
+        QTest::newRow("development") << "0.1.0-rc.2+git.0123456789ab" << "Version 0.1.0-rc.2+git.0123456789ab · development build";
+    }
     void aboutShowsBuildVersion()
     {
-        // main.cpp sets the version stamped by the build (package pkgver-pkgrel or git commit).
+        QFETCH(QString, version);
+        QFETCH(QString, shown);
+        // main.cpp sets the version stamped by the build (VERSION, or VERSION+git/local.<commit>).
         const QString previous = QCoreApplication::applicationVersion();
         const auto restore = qScopeGuard([previous] { QCoreApplication::setApplicationVersion(previous); });
-        QCoreApplication::setApplicationVersion(QStringLiteral("0.0.10.locala4e9ddc3a1a466dc-1"));
+        QCoreApplication::setApplicationVersion(version);
         openWindow();
         QVERIFY(click(window.get(), "About…"));
         auto* about = prompt(window.get(), "About OMAWIN365");
         QVERIFY(about);
-        bool shown = false;
+        bool found = false;
         for (auto* label : about->findChildren<QLabel*>())
-            shown = shown || label->text() == QStringLiteral("Version 0.0.10.locala4e9ddc3a1a466dc-1 · pre-release");
-        QVERIFY(shown);
+            found = found || label->text() == shown;
+        QVERIFY(found);
     }
     void aboutReusesDialogAndReopensAfterDeletion()
     {

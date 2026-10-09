@@ -16,10 +16,10 @@ The private FreeRDP package is temporary. The app currently accepts exactly Free
 (cd packaging/freerdp && makepkg)
 
 # App, from a committed checkout; the output directory must be new and outside the checkout:
-python3 packaging/app/prepare-snapshot.py "$PWD" /tmp/omawin365-pkg 0.0.12
-cd /tmp/omawin365-pkg && makepkg
+python3 packaging/app/prepare-snapshot.py "$PWD" /tmp/omawin365-pkg
+(cd /tmp/omawin365-pkg && makepkg)
 ```
 
-`prepare-snapshot.py` archives the committed `HEAD` (never working-tree edits) and writes a checksummed `PKGBUILD` with `pkgver=<base>.local<commit>`. The build stamps `<pkgver>-<pkgrel>` into the app, so `omawin365 --version` and About show exactly which build you're running. Builds from a git checkout show `dev+<commit>`.
+`prepare-snapshot.py` archives the committed `HEAD` (never working-tree edits) and writes a checksummed `PKGBUILD`. The `VERSION` file is the release version: at its `v<VERSION>` tag you get that release (`0.1.0-rc.2` → `pkgver=0.1.0rc2`); otherwise `pkgver=<release>.local<commit>`. `omawin365 --version` and About show the same version. A plain `make` from a git checkout shows `VERSION` at the release tag and `VERSION+git.<commit>` (plus `.dirty`) elsewhere.
 
 More detail is in [`packaging/README.md`](../packaging/README.md).
