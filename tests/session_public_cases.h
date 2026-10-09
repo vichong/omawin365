@@ -1269,6 +1269,12 @@ private slots:
     }
     void publicStderrCannotRequestSecretsAndDiagnosticsAreFixed()
     {
+        // Release builds must ignore the developer-only raw stderr log switch (INV-3).
+        QTemporaryDir logDir(QDir::tempPath() + QStringLiteral("/omawin365-stderr-log-XXXXXX"));
+        QVERIFY(logDir.isValid());
+        const QString rawLog = logDir.filePath(QStringLiteral("freerdp-stderr.log"));
+        qputenv("OMAWIN365_FREERDP_STDERR_LOG", QFile::encodeName(rawLog));
+        const auto restoreLog = qScopeGuard([] { qunsetenv("OMAWIN365_FREERDP_STDERR_LOG"); });
         SessionFixture fixture;
         QVERIFY(fixture.init());
         fixture.session.start(fixture.profile());
@@ -1292,6 +1298,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
         QCOMPARE(fixture.errors.count(), 1);
         QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP reported a transport connection failure."));
+        QVERIFY(!QFileInfo::exists(rawLog));
         const QStringList expected{QStringLiteral("connection-start"), QStringLiteral("transport-start"), QStringLiteral("transport-exit")};
         QStringList actual;
         for (const auto& signal : fixture.diagnostics)

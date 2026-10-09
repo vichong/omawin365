@@ -17,7 +17,7 @@ build() {
   cd "$srcdir/omawin365"
   mkdir -p .build
   cd .build
-  qmake6 ../omawin365.pro CONFIG+=release \
+  qmake6 ../omawin365.pro CONFIG+=release "OMAWIN365_VERSION=$pkgver-$pkgrel" \
     "QMAKE_CFLAGS_RELEASE=$CFLAGS" "QMAKE_CXXFLAGS_RELEASE=$CXXFLAGS" \
     "QMAKE_LFLAGS_RELEASE=$LDFLAGS" || return 1
   make -j2

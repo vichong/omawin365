@@ -26,7 +26,8 @@ private:
     QString root_;
     QString initializationError_;
     QList<Profile> profiles_;
+    QByteArray index_; // Index bytes this store last read or wrote.
     bool ensurePrivateRoot(QString* error) const;
-    bool saveIndex(const QList<Profile>& profiles, QString* error) const;
+    bool saveIndex(const QList<Profile>& profiles, QString* error);
     void loadIndex();
 };

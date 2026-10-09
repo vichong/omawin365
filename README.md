@@ -2,35 +2,42 @@
 
 ![OMAWIN365](docs/banner.png)
 
-**Experimental source for review and contribution. No supported installation or release yet; not recommended for work-account use.** Local packaging prototypes are included for inspection, not installation advice. The banner's Enterprise testing refers to historical builds, not current live acceptance.
+**Pre-release. Looking for reviewers.** OMAWIN365 is a native Qt launcher for Windows 365 Cloud PCs on Omarchy/Arch. It signs in to Microsoft in a private Chromium window and opens your Cloud PC with FreeRDP in a separate window. Importing a connection never connects automatically.
 
-A native Qt launcher for Windows 365 Cloud PCs on Omarchy/Arch, using stock FreeRDP and a private Chromium sign-in window. FreeRDP opens a separate X11 desktop through XWayland; it is not embedded in the launcher. Importing a connection never connects automatically.
+It works end to end with Windows 365 Enterprise on the maintainer's tenant, including:
 
-Not affiliated with, endorsed by or supported by Microsoft or Omarchy. Microsoft, Windows, Windows 365 and the redrawn Windows 365 mark are Microsoft trademarks used for identification. This independent community project is provided **as-is, without warranty**, under the [MIT license](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md).
+- downloading the connection file from the portal,
+- Microsoft sign-in with a hardware security key,
+- in-session PIN and touch prompts,
+- reconnect, cancel and wrong-PIN recovery.
 
-## Development build
+Other tenants and editions are untested. It has had extensive AI-assisted review but **no independent human security review yet**. Please [help review it](#help-review-it) before trusting it with a work account.
 
-Existing prerequisites: a Linux/Omarchy desktop, Qt 6.11 development packages (`qt6-base`, `qt6-wayland`, `qt6-svg`), a C++20 compiler, make/qmake6, libX11 and fontconfig. Chromium and XWayland are runtime dependencies. The app itself needs no CMake, Electron or Python runtime.
+Not affiliated with, endorsed by or supported by Microsoft or Omarchy. Microsoft, Windows, Windows 365 and the redrawn Windows 365 mark are Microsoft trademarks, used here only for identification. Provided **as-is, without warranty**, under the [MIT license](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Build
+
+On Omarchy/Arch with Qt 6.11 (`qt6-base`, `qt6-wayland`, `qt6-svg`), a C++20 compiler, `libx11` and `fontconfig`. Chromium and XWayland are needed at run time.
 
 ```sh
 make -j4
-# With the additional test prerequisites below:
-make test
+make test   # needs an X11/XWayland DISPLAY; see docs/TESTING.md
+./.build/omawin365
 ```
 
-A development executable is produced at `.build/omawin365`. **Do not treat these commands as a supported end-user installation recipe.** Transport accepts only stock FreeRDP **3.32.1 with `WITH_SSO_MIB=OFF`**, using the modern state/S256 console-callback contract. Distro FreeRDP 3.31.1 is rejected. Version/buildconfig self-reports do not prove provenance or the required feature configuration. There is no automatic upgrade or fallback; supported provisioning/deployed validation remains pending.
+The app needs **FreeRDP 3.32.1 built with `WITH_SSO_MIB=OFF`, plus one certificate fix**. Arch's stock `freerdp` (3.31.1) is rejected. The recipe in [`packaging/freerdp`](packaging/freerdp) builds a private copy under `/usr/lib/omawin365/freerdp` without touching the distro package; see [packaging](docs/PACKAGING.md).
 
-Browser authentication requires an existing absolute, user-owned **0700 tmpfs** `XDG_RUNTIME_DIR`. Disk-backed storage is rejected; tmpfs may swap. Long custom runtime paths can exceed Chromium's socket limit. The Arch Chromium executable is expected at `/usr/lib/chromium/chromium`. Do not sign in with work credentials merely to test this source snapshot.
+**Why the FreeRDP patch:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP builds without uriparser discard wildcard names, so valid gateways look like a name mismatch. OMAWIN365 never accepts a certificate prompt, so every connection stopped. [Patch 0003](packaging/freerdp/0003-accept-wildcard-dns-san.patch) fixes this. It's submitted upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). Once it's merged and Arch ships a fixed FreeRDP, the app's exact-version check and package dependency will move to stock `freerdp`, and the private copy goes away.
 
-## Review and contribution
+## Help review it
+
+The [security review brief](docs/SECURITY-REVIEW-BRIEF.md) explains what the app does, where the risk is and the five questions we most want answered. It takes about 10 minutes to read. Human reviews and AI-assisted reviews are both welcome; please read [contributing](CONTRIBUTING.md) first. Report anything exploitable privately: see [SECURITY.md](SECURITY.md).
+
+## More
 
 - [Architecture and boundaries](docs/BOUNDARIES.md)
-- [Tests and prerequisites](docs/TESTING.md)
-- [Verification summary and remaining gates](docs/VERIFICATION.md)
-- [Contributing](CONTRIBUTING.md)
-- [Packaging preparation status](docs/PACKAGING.md)
-- [Content manifest](PUBLICATION-MANIFEST.json)
+- [Tests](docs/TESTING.md)
+- [What has been verified](docs/VERIFICATION.md)
+- [Packaging](docs/PACKAGING.md)
 
-Source repository: [vichong/omawin365](https://github.com/vichong/omawin365).
-
-Built with AI coding agents, directed by the maintainer. AI-assisted reviews are **not independent human security review or security certification**. Practical independent human feedback is still needed. Never submit credentials, PINs, callback URLs, tokens or real connection files with a report.
+Built with AI coding agents (Claude Code and Codex), directed and tested by the maintainer. Never include credentials, PINs, callback URLs, tokens or real connection files in an issue.

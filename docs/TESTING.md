@@ -18,6 +18,6 @@ The synthetic child path is recorded by qmake; regenerate after moving the check
 
 Individual targets: `make test-session`, `make test-session-public`, `make test-window`. Other suites are built by `make test`. Process fixtures use a fake FreeRDP executable and synthetic profiles, not Microsoft authentication or hardware keys. The maintained composed BrowserAuth tests use explicit CDP page adoption/inert process/command-sink scaffolding rather than real Chromium dispatch.
 
-Optional parser/profile fuzz harness sources are under `tools/security/`; see their [scope](../tools/security/README.md). Do not execute broader campaigns or capture a real session simply to reproduce the verification summary. No tests were run during snapshot curation.
+Optional parser/profile fuzz harness sources are under `tools/security/`; see their [scope](../tools/security/README.md).
 
 See [recorded verification](VERIFICATION.md) and [contributor rules](../CONTRIBUTING.md).

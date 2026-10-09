@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
@@ -109,8 +110,9 @@ void ProfileStore::loadIndex()
         initializationError_ = QStringLiteral("The saved profile list is not a readable private application file.");
         return;
     }
+    const QByteArray bytes = file.readAll();
     QJsonParseError parseError;
-    const auto document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    const auto document = QJsonDocument::fromJson(bytes, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
         initializationError_ = QStringLiteral("The saved profile list is damaged; it was left unchanged.");
         return;
@@ -134,15 +136,32 @@ void ProfileStore::loadIndex()
         loaded.append({id, name, path});
     }
     profiles_ = std::move(loaded);
+    index_ = bytes;
 }
 
-bool ProfileStore::saveIndex(const QList<Profile>& profiles, QString* error) const
+bool ProfileStore::saveIndex(const QList<Profile>& profiles, QString* error)
 {
+    // The instance lock lives in the runtime directory; another runtime can share
+    // this data directory. Compare-and-swap so a stale store never overwrites it.
+    const QString path = QDir(root_).filePath(QStringLiteral("profiles.json"));
+    QLockFile lock(QDir(root_).filePath(QStringLiteral("profiles.lock")));
+    if (!lock.tryLock(1000))
+        return fail(error, QStringLiteral("Another OMAWIN365 instance is changing saved connections. Try again."));
+    struct stat st {};
+    const bool present = ::lstat(QFile::encodeName(path).constData(), &st) == 0;
+    QFile current(path);
+    if (present && (!privateOwnedFile(path) || !current.open(QIODevice::ReadOnly)))
+        return fail(error, QStringLiteral("An application data file has unsafe permissions or ownership."));
+    if ((present ? current.read(maximumProfileBytes + 1) : QByteArray()) != index_)
+        return fail(error, QStringLiteral("Saved connections were changed by another OMAWIN365 instance. Restart OMAWIN365 and try again."));
     QJsonArray array;
     for (const auto& profile : profiles)
         array.append(QJsonObject{{QStringLiteral("id"), profile.id}, {QStringLiteral("name"), profile.name}});
-    return atomicPrivateWrite(QDir(root_).filePath(QStringLiteral("profiles.json")),
-                              QJsonDocument(array).toJson(QJsonDocument::Compact), error);
+    const QByteArray bytes = QJsonDocument(array).toJson(QJsonDocument::Compact);
+    if (!atomicPrivateWrite(path, bytes, error))
+        return false;
+    index_ = bytes;
+    return true;
 }
 
 Profile ProfileStore::importFile(const QString& sourcePath, QString* error, const QString& displayName)

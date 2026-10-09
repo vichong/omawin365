@@ -27,6 +27,9 @@ protected:
 
 private:
     void refreshProfiles(const QString& preferredId = {});
+    void fitProfileList();
+    void markConnectedProfile();
+    void showIdlePrompt();
     void updateControls();
     void setStatus(const QString& phase, const QString& detail);
     void connectSelected();
@@ -35,6 +38,8 @@ private:
     void removeSelected();
     void renameSelected();
     void acquireProfile();
+    void clearAcquisition();
+    void cancelAcquisition();
     void requestPin(const QString& message);
     void showTouch();
     void dismissChallenge();
@@ -74,7 +79,7 @@ private:
         QPointer<QPushButton> focus;
     } m_challenge;
     struct Acquisition {
-        QPointer<QDialog> guide;
+        QPointer<QWidget> panel;
         QPointer<QLabel> status;
         QPointer<QListWidget> resources;
         QPointer<QPushButton> download;
@@ -85,6 +90,8 @@ private:
     QPointer<QDialog> m_renameDialog;
     QPointer<QDialog> m_aboutDialog;
     QString m_phase = QStringLiteral("disconnected");
+    bool m_signInClosed = false; // The user closed the sign-in window; the stop is a cancel.
+    bool m_idlePrompt = true; // The detail text is our own idle prompt, not a status message.
     QString m_activeProfile;
     QString m_restartPath;
     bool m_connected = false;

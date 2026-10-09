@@ -122,7 +122,8 @@ void PromptParser::promptComplete(QList<Event>& events)
     } else {
         if (certificateStage_ != CertificateStage::Idle)
             return; // Only the correctly ordered certificate block may reach Ready.
-        if ((line_.endsWith(": ") || line_.endsWith("(Y/N) ") || line_.contains("? ")) &&
+        // Runs after every space, so "? " first appears at the end; a rescan would be quadratic.
+        if ((line_.endsWith(": ") || line_.endsWith("(Y/N) ") || line_.endsWith("? ")) &&
             !line_.startsWith("Browse to: ") && !line_.startsWith("Certificate details for ") &&
             !line_.startsWith("!!!Certificate for ")) {
             events.append(event(Kind::UnsupportedPrompt));

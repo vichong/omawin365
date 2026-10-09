@@ -152,6 +152,9 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     m_acquire = new WrappedButton(QStringLiteral("&Get a Cloud PC connection"), content);
     m_contentLayout->addWidget(m_acquire);
     connect(m_acquire, &QPushButton::clicked, this, &Window::acquireProfile);
+    auto* signatureNotice = label(QStringLiteral("Connection file signatures are kept but not verified. Use files only from a source you trust."), content, "muted");
+    signatureNotice->setObjectName(QStringLiteral("signatureNotice"));
+    m_contentLayout->addWidget(signatureNotice);
     m_contentLayout->addWidget(label(QStringLiteral("Your desktop opens in a separate FreeRDP window. Private Microsoft sign-in may appear several times; follow each prompt."), content, "muted"));
     m_contentLayout->addWidget(label(QStringLiteral("Tested with Windows 365 Enterprise. Other editions are not yet verified."), content, "muted"));
     auto* about = new QPushButton(QStringLiteral("&About…"), content);
@@ -166,6 +169,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     connect(m_profiles, &ProfileStore::changed, this, [this] { refreshProfiles(); });
     connect(m_list, &QListWidget::currentRowChanged, this, [this] {
         QSettings().setValue(QStringLiteral("selectedProfile"), selectedId());
+        showIdlePrompt();
         updateControls();
     });
     connect(m_list, &QListWidget::itemActivated, this, [this] { connectSelected(); });
@@ -203,6 +207,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     });
     connect(m_session, &Session::connected, this, [this] {
         m_connected = true;
+        m_browser->cancel(); // The desktop is up: the sign-in window's job is done.
         if (m_phase != "awaiting-pin" && m_phase != "awaiting-touch")
             setStatus("connected", QStringLiteral("Your desktop is connected in its own FreeRDP window."));
         updateControls();
@@ -224,8 +229,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     });
     connect(m_browser, &BrowserAuth::failed, this, [this](const QString& message) {
         if (m_acquisition.active) {
-            m_acquisition.active = false;
-            if (m_acquisition.guide) m_acquisition.guide->reject();
+            clearAcquisition();
             setStatus("acquisition-error", message);
             showError(QStringLiteral("Connection download stopped"), message);
             updateControls();
@@ -237,6 +241,20 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
         disconnectSession();
         setStatus("error", message);
         showError(QStringLiteral("Sign-in stopped"), message);
+    });
+    connect(m_browser, &BrowserAuth::closed, this, [this] {
+        // Closing the sign-in window is how users back out (for example after a
+        // security-key problem): cancel calmly instead of reporting an error.
+        if (m_acquisition.active) {
+            clearAcquisition();
+            setStatus("disconnected", QStringLiteral("Sign-in window closed, so getting a connection was cancelled."));
+            updateControls();
+            return;
+        }
+        if (!m_session->active() || m_stopping) return;
+        m_restartPath.clear();
+        m_signInClosed = true;
+        disconnectSession();
     });
     connect(m_session, &Session::error, this, [this](const QString& message) {
         m_restartPath.clear();
@@ -260,7 +278,11 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
             QTimer::singleShot(0, this, &QWidget::close);
             return;
         }
-        if (!m_errorVisible) setStatus("disconnected", QStringLiteral("Session closed. You can connect again."));
+        if (!m_errorVisible)
+            setStatus("disconnected", m_signInClosed
+                ? QStringLiteral("Sign-in window closed, so the connection was cancelled. Press Connect to try again.")
+                : QStringLiteral("Session closed. You can connect again."));
+        m_signInClosed = false;
         updateControls();
         if (!m_restartPath.isEmpty()) {
             const QString path = m_restartPath;
@@ -285,8 +307,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
         // The direct Get action authorized private import, never connection.
         QString error;
         const Profile profile = m_profiles->importFile(temporaryPath, &error, displayName);
-        m_acquisition.active = false;
-        if (m_acquisition.guide) m_acquisition.guide->accept();
+        clearAcquisition();
         if (profile.id.isEmpty()) {
             setStatus("acquisition-error", error);
             showError(QStringLiteral("Import failed"), error);
@@ -299,7 +320,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     });
     connect(m_browser, &BrowserAuth::resourcesAvailable, this,
         [this](const QStringList& ids, const QStringList& names) {
-            if (!m_acquisition.active || !m_acquisition.guide || !m_acquisition.resources
+            if (!m_acquisition.active || !m_acquisition.panel || !m_acquisition.resources
                 || ids.size() != names.size()) return;
             auto* resources = m_acquisition.resources.data();
             resources->clear();
@@ -311,12 +332,11 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
             }
             resources->setVisible(!ids.isEmpty());
             m_acquisition.download->setVisible(!ids.isEmpty());
-            m_acquisition.download->setDefault(!ids.isEmpty());
             m_acquisition.download->setEnabled(false);
             m_acquisition.status->setText(ids.isEmpty()
                 ? QStringLiteral("Waiting for the portal to refresh available Cloud PCs…")
                 : QStringLiteral("Choose the Cloud PC connection to download. This will not open a desktop."));
-            refit(m_acquisition.guide);
+            applySpacing();
             if (!ids.isEmpty()) resources->setFocus();
         });
     refreshProfiles(QSettings().value(QStringLiteral("selectedProfile")).toString());
@@ -411,10 +431,46 @@ void Window::applySpacing()
     layoutSpacing(m_contentLayout, m_theme->spacing(QStringLiteral("control-gap"), 8));
     m_statusLayout->setContentsMargins(padding, padding, padding, padding);
     const QFontMetrics metrics(m_list->font());
-    m_list->setMinimumHeight(metrics.lineSpacing() * 3);
-    m_list->setMaximumHeight(metrics.lineSpacing() * 5);
+    fitProfileList();
     m_connectionPanel->setMaximumWidth(qBound(480, metrics.averageCharWidth() * 72 + 2 * padding, 720));
     static_cast<WrappedContent*>(m_connectionPanel)->updateWrappedHeight();
+}
+
+void Window::fitProfileList()
+{
+    // Show every saved Cloud PC up to eight rows, then scroll; measured from the
+    // themed row height rather than bare text lines, which hid all but two rows.
+    m_list->ensurePolished();
+    const int row = m_list->count() > 0 ? m_list->sizeHintForRow(0)
+                                        : QFontMetrics(m_list->font()).lineSpacing() * 2;
+    const int rows = qBound(2, m_list->count(), 8);
+    m_list->setFixedHeight(rows * row + 2 * m_list->frameWidth());
+    if (auto* panel = dynamic_cast<WrappedContent*>(m_connectionPanel))
+        panel->updateWrappedHeight();
+}
+
+void Window::markConnectedProfile()
+{
+    // With the list usable during a session, show which Cloud PC is connected.
+    const bool active = m_session->active();
+    for (int row = 0; row < m_list->count(); ++row) {
+        auto* item = m_list->item(row);
+        const QString name = item->data(Qt::UserRole + 2).toString();
+        const bool connected = active && !m_activeProfile.isEmpty()
+            && item->data(Qt::UserRole + 1).toString() == m_activeProfile;
+        const QString text = connected ? QStringLiteral("● ") + name : name;
+        if (item->text() != text) item->setText(text);
+        item->setData(Qt::AccessibleTextRole, connected ? name + QStringLiteral(", connected") : name);
+    }
+}
+
+void Window::showIdlePrompt()
+{
+    if (!m_idlePrompt || m_session->active() || m_phase != QStringLiteral("disconnected")) return;
+    const auto* item = m_list->currentItem();
+    m_detailLabel->setText(item
+        ? QStringLiteral("Press Connect or Enter to open %1.").arg(item->data(Qt::UserRole + 2).toString())
+        : QStringLiteral("Import a .rdpw file or get a Cloud PC connection to start."));
 }
 
 QString Window::selectedId() const
@@ -439,6 +495,8 @@ void Window::refreshProfiles(const QString& preferredId)
     for (const Profile& profile : m_profiles->profiles()) {
         auto* item = new QListWidgetItem(profile.name, m_list);
         item->setData(Qt::UserRole, profile.id);
+        item->setData(Qt::UserRole + 1, profile.path);
+        item->setData(Qt::UserRole + 2, profile.name);
         item->setToolTip(QStringLiteral("<qt>") + profile.name.toHtmlEscaped() + QStringLiteral("</qt>"));
         if (profile.id == id) m_list->setCurrentItem(item);
         if (profile.path == m_activeProfile) m_sessionLabel->setText(profile.name);
@@ -447,29 +505,60 @@ void Window::refreshProfiles(const QString& preferredId)
     QSettings().setValue(QStringLiteral("selectedProfile"), selectedId());
     m_empty->setVisible(m_list->count() == 0);
     m_list->setVisible(m_list->count() > 0);
+    fitProfileList();
+    showIdlePrompt();
     updateControls();
+}
+
+void Window::clearAcquisition()
+{
+    m_acquisition.active = false;
+    if (m_acquisition.panel) {
+        m_acquisition.panel->hide();
+        m_acquisition.panel->deleteLater();
+    }
+    m_acquisition.panel = nullptr;
+    m_acquisition.status = nullptr;
+    m_acquisition.resources = nullptr;
+    m_acquisition.download = nullptr;
+}
+
+void Window::cancelAcquisition()
+{
+    if (!m_acquisition.active) return;
+    const quint64 generation = m_acquisition.generation;
+    const bool panelHadFocus = m_acquisition.panel
+        && m_acquisition.panel->isAncestorOf(QApplication::focusWidget());
+    // Invalidate before cancel's synchronous outward signals. A reentrant Get
+    // may replace this acquisition; its status must not be overwritten below.
+    clearAcquisition();
+    updateControls();
+    // Restore only focus owned by this panel, before any replacement callback.
+    // Never activate the main window or take focus back from a browser.
+    if (panelHadFocus && isActiveWindow()) m_acquire->setFocus(Qt::OtherFocusReason);
+    m_browser->cancel();
+    if (generation == m_acquisition.generation && !m_acquisition.active)
+        setStatus("disconnected", QStringLiteral("Connection download cancelled. You can import a trusted .rdpw file instead."));
 }
 
 void Window::acquireProfile()
 {
-    if (m_session->active() || m_closePending) return;
-    if (m_acquisition.guide) {
-        attention(m_acquisition.guide);
-        return;
-    }
-    if (m_acquisition.active) return;
+    if (m_session->active() || m_closePending || m_acquisition.active) return;
     ++m_acquisition.generation;
-    auto* guide = dialog(this, QStringLiteral("OMAWIN365 · get a Cloud PC connection"));
-    m_acquisition.guide = guide;
-    auto* layout = new DialogLayout(guide, m_theme);
-    auto* content = layout->content();
-    layout->details->addWidget(label(QStringLiteral("Get your Microsoft connection"), content, "title"));
-    layout->details->addWidget(label(QStringLiteral("Sign in with your work account in the private browser. OMAWIN365 finds your Cloud PCs and downloads the connection for the one you choose. If there is only one, its connection is downloaded automatically."), content));
-    layout->details->addWidget(label(QStringLiteral("Only use an account and connection you trust. OMAWIN365 keeps a private copy of the Microsoft connection. It will not connect until you choose Connect."), content, "muted"));
-    m_acquisition.status = label(QStringLiteral("Opening private Microsoft sign-in…"), content);
+    auto* panel = new WrappedContent(m_connectionPanel);
+    panel->setObjectName(QStringLiteral("acquisitionPanel"));
+    m_acquisition.panel = panel;
+    auto* layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSizeConstraint(QLayout::SetNoConstraint);
+    m_contentLayout->insertWidget(m_contentLayout->indexOf(m_acquire) + 1, panel);
+    layout->addWidget(label(QStringLiteral("Get your Microsoft connection"), panel, "title"));
+    layout->addWidget(label(QStringLiteral("Sign in with your work account in the private browser. OMAWIN365 finds your Cloud PCs and downloads the connection for the one you choose. If there is only one, its connection is downloaded automatically."), panel));
+    layout->addWidget(label(QStringLiteral("Only use an account and connection you trust. OMAWIN365 keeps a private copy of the Microsoft connection. It will not connect until you choose Connect."), panel, "muted"));
+    m_acquisition.status = label(QStringLiteral("Opening private Microsoft sign-in…"), panel);
     m_acquisition.status->setAccessibleName(QStringLiteral("Connection download status"));
-    layout->details->addWidget(m_acquisition.status);
-    auto* resources = new QListWidget(content);
+    layout->addWidget(m_acquisition.status);
+    auto* resources = new QListWidget(panel);
     m_acquisition.resources = resources;
     resources->setAccessibleName(QStringLiteral("Available Microsoft Cloud PCs"));
     resources->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -478,30 +567,31 @@ void Window::acquireProfile()
     resources->setMinimumHeight(metrics.lineSpacing() * 4);
     resources->setMaximumHeight(metrics.lineSpacing() * 9);
     resources->hide();
-    layout->details->addWidget(resources);
-    auto* download = new WrappedButton(QStringLiteral("&Download selected connection"), guide);
+    layout->addWidget(resources);
+    auto* download = new WrappedButton(QStringLiteral("&Download selected connection"), panel);
     m_acquisition.download = download;
     download->setProperty("primary", true);
+    download->setAutoDefault(false);
     download->setEnabled(false);
     download->hide();
-    layout->controls->addWidget(download);
-    auto* manual = new WrappedButton(QStringLiteral("&Import a trusted .rdpw instead…"), guide);
+    layout->addWidget(download);
+    auto* manual = new WrappedButton(QStringLiteral("&Import a trusted .rdpw instead…"), panel);
     manual->setAutoDefault(false);
-    layout->controls->addWidget(manual);
-    auto* cancel = new WrappedButton(QStringLiteral("&Cancel"), guide);
+    layout->addWidget(manual);
+    auto* cancel = new WrappedButton(QStringLiteral("&Cancel"), panel);
     cancel->setAutoDefault(false);
-    layout->controls->addWidget(cancel);
-    const auto updateSelection = [this, guide, resources, download] {
-        if (m_acquisition.guide == guide && m_acquisition.active) {
+    layout->addWidget(cancel);
+    const auto updateSelection = [this, panel, resources, download] {
+        if (m_acquisition.panel == panel && m_acquisition.active) {
             const auto* item = resources->currentItem();
             download->setEnabled(item && item->isSelected());
         }
     };
-    connect(resources, &QListWidget::currentRowChanged, guide, updateSelection);
-    connect(resources, &QListWidget::itemSelectionChanged, guide, updateSelection);
-    connect(resources, &QListWidget::itemActivated, guide, [download] { download->click(); });
-    connect(download, &QPushButton::clicked, guide, [this, guide, resources, download] {
-        if (m_acquisition.guide != guide || !m_acquisition.active || !resources->currentItem()
+    connect(resources, &QListWidget::currentRowChanged, panel, updateSelection);
+    connect(resources, &QListWidget::itemSelectionChanged, panel, updateSelection);
+    connect(resources, &QListWidget::itemActivated, panel, [download] { download->click(); });
+    connect(download, &QPushButton::clicked, panel, [this, panel, resources, download] {
+        if (m_acquisition.panel != panel || !m_acquisition.active || !resources->currentItem()
             || !resources->currentItem()->isSelected()) return;
         const QString id = resources->currentItem()->data(Qt::UserRole).toString();
         if (id.isEmpty()) return;
@@ -510,37 +600,44 @@ void Window::acquireProfile()
         m_acquisition.status->setText(QStringLiteral("Downloading the selected connection…"));
         m_browser->selectResource(id);
     });
-    connect(manual, &QPushButton::clicked, guide, [this, guide] {
-        if (m_acquisition.guide != guide) return;
+    connect(manual, &QPushButton::clicked, panel, [this, panel] {
+        if (m_acquisition.panel != panel || !m_acquisition.active) return;
         const quint64 generation = m_acquisition.generation;
-        guide->reject();
-        // Let the modal guide relinquish focus before opening the file chooser.
+        cancelAcquisition();
         QTimer::singleShot(0, this, [this, generation] {
-            if (generation == m_acquisition.generation && !m_acquisition.guide
+            if (generation == m_acquisition.generation && !m_acquisition.panel
                 && !m_acquisition.active && !m_session->active() && !m_closePending) m_import->click();
         });
     });
-    connect(cancel, &QPushButton::clicked, guide, &QDialog::reject);
-    connect(guide, &QDialog::finished, this, [this, guide](int) {
-        if (m_acquisition.guide != guide) return;
-        m_acquisition.guide = nullptr;
-        m_acquisition.status = nullptr;
-        m_acquisition.resources = nullptr;
-        m_acquisition.download = nullptr;
-        if (m_acquisition.active) {
-            m_acquisition.active = false;
-            m_browser->cancel();
-            setStatus("disconnected", QStringLiteral("Connection download cancelled. You can import a trusted .rdpw file instead."));
-        }
-        updateControls();
+    connect(cancel, &QPushButton::clicked, panel, [this, panel] {
+        if (m_acquisition.panel == panel) cancelAcquisition();
     });
     m_acquisition.active = true;
     updateControls();
     setStatus("acquiring", QStringLiteral("Sign in in the private browser to find your Cloud PCs."));
-    layout->fit();
-    attention(guide);
-    cancel->setFocus();
-    if (m_acquisition.guide == guide && m_acquisition.active) m_browser->beginProfileDownload();
+    applySpacing();
+    panel->show();
+    // Insert the dynamically created controls at their visual position in the
+    // existing chain. Hidden/disabled resource controls are skipped by Tab.
+    QWidget::setTabOrder(m_acquire, resources);
+    QWidget::setTabOrder(resources, download);
+    QWidget::setTabOrder(download, manual);
+    QWidget::setTabOrder(manual, cancel);
+    cancel->setFocus(Qt::OtherFocusReason);
+    const quint64 generation = m_acquisition.generation;
+    // The panel must participate in layout before computing the scroll range.
+    // Queue only layout/scroll, never focus: user movement and a replacement
+    // acquisition must win over this initial presentation work.
+    QTimer::singleShot(0, panel, [this, panel, cancel, generation] {
+        if (m_acquisition.panel != panel || !m_acquisition.active
+            || m_acquisition.generation != generation || !cancel->hasFocus()) return;
+        panel->layout()->activate();
+        m_contentLayout->activate();
+        static_cast<WrappedContent*>(m_connectionPanel)->updateWrappedHeight();
+        if (auto* scroll = findChild<QScrollArea*>(QStringLiteral("connectionScroll")))
+            scroll->ensureWidgetVisible(cancel, 0, 0);
+    });
+    if (m_acquisition.panel == panel && m_acquisition.active) m_browser->beginProfileDownload();
 }
 
 bool Window::importProfile(const QString& sourcePath)
@@ -564,11 +661,13 @@ bool Window::importProfile(const QString& sourcePath)
 void Window::removeSelected()
 {
     const QString id = selectedId();
-    if (id.isEmpty() || m_session->active()) return;
+    if (id.isEmpty() || !m_remove->isEnabled()) return;
     QMessageBox confirm(QMessageBox::Question, QStringLiteral("Remove connection"),
         QStringLiteral("Remove this connection from OMAWIN365? Only the app's private copy is removed. Your original file is not changed."),
         QMessageBox::Cancel | QMessageBox::Yes, this);
     if (!confirmProfileAction(confirm, m_theme, QMessageBox::Yes, QStringLiteral("Remove"))) return;
+    // The dialog runs an event loop: never remove a profile that became the connected one.
+    if (selectedId() != id || (m_session->active() && selectedPath() == m_activeProfile)) return;
     QString error;
     if (!m_profiles->removeProfile(id, &error)) showError(QStringLiteral("Could not remove connection"), error);
 }
@@ -654,11 +753,15 @@ void Window::updateControls()
     m_disconnect->setVisible(active);
     m_reconnect->setVisible(active);
     m_disconnect->parentWidget()->setVisible(active);
-    m_remove->setEnabled(selected && !active && !m_acquisition.active);
+    // During a session the list stays usable for browsing, renaming and removing other
+    // profiles; Connect is hidden and connectSelected() refuses a second session.
+    m_remove->setEnabled(selected && !m_acquisition.active && !m_closePending
+                         && !(active && selectedPath() == m_activeProfile));
     m_rename->setEnabled(selected && !m_acquisition.active && !m_closePending && !m_stopping
         && !m_challenge.dialog && !m_closeConfirmation
         && m_phase != "awaiting-pin" && m_phase != "awaiting-touch");
-    m_list->setEnabled(!active && !m_acquisition.active);
+    m_list->setEnabled(!m_acquisition.active);
+    markConnectedProfile();
     m_import->setEnabled(!active && !m_acquisition.active && !m_closePending);
     m_acquire->setEnabled(!active && !m_acquisition.active && !m_closePending);
 }
@@ -666,6 +769,7 @@ void Window::updateControls()
 void Window::setStatus(const QString& phase, const QString& detail)
 {
     m_phase = phase;
+    m_idlePrompt = false;
     m_phaseLabel->setText(phaseTitle(phase));
     m_phaseLabel->setProperty("role", phase == "error" || phase == "acquisition-error" ? "error" : "phase");
     m_phaseLabel->style()->unpolish(m_phaseLabel);
@@ -686,7 +790,7 @@ void Window::connectSelected()
     m_connected = false;
     m_stopping = false;
     m_activeProfile = path;
-    m_sessionLabel->setText(m_list->currentItem()->text());
+    m_sessionLabel->setText(m_list->currentItem()->data(Qt::UserRole + 2).toString());
     m_sessionLabel->show();
     setStatus("connecting", QStringLiteral("Starting FreeRDP…"));
     m_session->start(path);
@@ -868,7 +972,7 @@ void Window::showError(const QString& title, const QString& message)
 void Window::closeEvent(QCloseEvent* event)
 {
     if (!m_session->active()) {
-        m_acquisition.active = false;
+        clearAcquisition();
         m_browser->cancel();
         event->accept();
         return;

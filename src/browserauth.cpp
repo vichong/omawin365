@@ -48,6 +48,17 @@ bool acquisitionPage(const QUrl& url)
         && url.path(QUrl::FullyEncoded) == QStringLiteral("/arm/webclient/index.html");
 }
 
+// Chromium reports the owned main frame even when a foreign child frame navigates
+// it to a download, so the frame cannot attribute the source; the URL can.
+bool portalDownloadSource(const QUrl& url)
+{
+    const QUrl source = url.scheme() == QStringLiteral("blob")
+        ? QUrl(url.path(QUrl::FullyEncoded), QUrl::StrictMode) : url;
+    return source.isValid() && source.scheme() == QStringLiteral("https") && source.userInfo().isEmpty()
+        && (source.port(-1) == -1 || source.port() == 443)
+        && source.host() == QStringLiteral("client.wvd.microsoft.com");
+}
+
 bool downloadGuidValid(const QString& guid)
 {
     static const QRegularExpression pattern(QStringLiteral(
@@ -118,6 +129,51 @@ bool nonblocking(int fd)
     return flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
+// Runs in the forked browser child before exec, so async-signal-safe calls only
+// (_Fork, not fork: no atfork handlers). Starts a new session and an anchor in its
+// process group: Qt reaps the browser itself, so without a member we own, the group
+// number could be recycled before our final SIGKILL. The anchor keeps every catchable
+// signal blocked and ends only on that SIGKILL or when the app closes holdFd's write
+// end. Exec happens only after the anchor confirms its setup; failures are reported
+// through QProcess so a group without an anchor is never published as started.
+// inputFd < 0 skips the CDP descriptors (test transports).
+void prepareBrowserChild(QProcess* process, int inputFd, int outputFd, int holdFd, pid_t parentPid)
+{
+    sigset_t all, previous;
+    ::sigfillset(&all);
+    if (::sigprocmask(SIG_BLOCK, &all, &previous) != 0 || ::prctl(PR_SET_PDEATHSIG, SIGKILL) != 0
+        || ::getppid() != parentPid || ::setsid() < 0)
+        process->failChildProcessModifier("browser session setup", errno);
+    int ready[2];
+    if (::pipe2(ready, O_CLOEXEC) != 0)
+        process->failChildProcessModifier("browser anchor setup", errno);
+    const pid_t anchor = ::_Fork();
+    if (anchor < 0)
+        process->failChildProcessModifier("browser anchor setup", errno);
+    if (anchor == 0) {
+        // Only fd 0 (hold) and fd 1 (ready) survive; no copy of any app or Qt pipe.
+        if (::dup2(holdFd, 0) < 0 || ::dup2(ready[1], 1) < 0
+            || ::syscall(SYS_close_range, 2u, ~0u, 0u) != 0 || ::write(1, "r", 1) != 1)
+            ::_exit(0);
+        ::close(1);
+        char byte;
+        while (::read(0, &byte, 1) < 0 && errno == EINTR) {}
+        ::_exit(0);
+    }
+    ::close(ready[1]);
+    char confirmed = 0;
+    ssize_t got;
+    while ((got = ::read(ready[0], &confirmed, 1)) < 0 && errno == EINTR) {}
+    if (got != 1)
+        process->failChildProcessModifier("browser anchor setup", 0);
+    ::close(ready[0]);
+    ::close(holdFd);
+    if ((inputFd >= 0 && (::dup2(inputFd, 3) < 0 || ::dup2(outputFd, 4) < 0
+                          || ::syscall(SYS_close_range, 5u, ~0u, CLOSE_RANGE_CLOEXEC) < 0))
+        || ::sigprocmask(SIG_SETMASK, &previous, nullptr) != 0)
+        process->failChildProcessModifier("browser descriptor setup", errno);
+}
+
 // Do not change the GUI's signal disposition or consume a pre-existing SIGPIPE.
 ssize_t pipeWrite(int fd, const char* bytes, size_t count)
 {
@@ -143,16 +199,23 @@ ssize_t pipeWrite(int fd, const char* bytes, size_t count)
 
 QString completionPage()
 {
+    // The launcher's own logo, inlined from the compiled-in resource: nothing is fetched.
+    QString logo;
+    QFile header(QStringLiteral(":/icons/header.svg"));
+    if (header.open(QIODevice::ReadOnly))
+        logo = QStringLiteral("<div class=logo>") + QString::fromUtf8(header.readAll()) + QStringLiteral("</div>");
     return QStringLiteral("data:text/html;charset=utf-8,") + QString::fromLatin1(QUrl::toPercentEncoding(
         QStringLiteral("<!doctype html><meta charset=utf-8><title>OMAWIN365</title>"
         "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
         "<style>body{background:#181818;color:#eee;font:16px monospace;"
         "margin:clamp(1em,4vw,3em);max-width:65ch;line-height:1.6}"
-        "h1{font-size:1.5em;line-height:1.3}</style><h1>Sign-in returned to OMAWIN365</h1>"
+        ".logo svg{display:block;width:min(100%,22em);height:auto;margin-bottom:1.5em}"
+        ".logo .t{fill:#eee}"
+        "h1{font-size:1.5em;line-height:1.3}</style>") + logo + QStringLiteral("<h1>Sign-in returned to OMAWIN365</h1>"
         "<p>This sign-in step is complete. Your desktop connection may still be finishing.</p>"
         "<p><strong>Another Microsoft sign-in window may open.</strong> "
         "A connection can require several sign-in steps. Follow each prompt until your desktop opens.</p>"
-        "<p>Keep this window open until your desktop appears. "
+        "<p>Keep this window open: OMAWIN365 closes it when your desktop appears, and closing it earlier cancels the connection. "
         "If another sign-in step is needed, OMAWIN365 replaces this window automatically. "
         "You do not need to press Connect again.</p>"
         "<p>If sign-in keeps repeating without progress, check the connection status in OMAWIN365.</p>")));
@@ -256,6 +319,11 @@ struct BrowserAuth::Private {
     int childWrite = -1;
     QList<int> startupGuards;
     pid_t group = -1;
+    // Qt reaps Chromium itself, so the group number would be free once its last member
+    // exits. An anchor process in the group holds it until our final SIGKILL; it ignores
+    // SIGTERM and exits early only when this write end closes (including app death).
+    int anchorRead = -1;
+    int anchorWrite = -1;
     bool stopping = false;
     bool diagnosticsEnabled = false;
     bool contextCreated = false;
@@ -311,6 +379,7 @@ struct BrowserAuth::Private {
             group = static_cast<pid_t>(process.processId());
             closeFd(childRead);
             closeFd(childWrite);
+            closeFd(anchorRead);
             releaseStartupGuards();
             diagnostic(mode == Mode::Authentication ? QStringLiteral("browser-started")
                                                     : QStringLiteral("browser-acquisition-started"));
@@ -323,6 +392,13 @@ struct BrowserAuth::Private {
         });
         QObject::connect(&process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), owner,
                          [this](int, QProcess::ExitStatus) {
+            if (!stopping) {
+                // Release the group before any signal emission can re-enter BrowserAuth.
+                if (group > 0)
+                    ::kill(-group, SIGKILL);
+                group = -1;
+                closeFd(anchorWrite);
+            }
             diagnostic(mode == Mode::Authentication ? QStringLiteral("browser-exited")
                                                     : QStringLiteral("browser-acquisition-exited"));
             if (stopping)
@@ -332,14 +408,10 @@ struct BrowserAuth::Private {
             ++round;
             clearRound();
             cleanupTransport();
-            if (group > 0) {
-                ::kill(-group, SIGKILL);
-                group = -1;
-            }
             disposeContext();
             profile.reset();
             if (wasActive)
-                emit owner->failed(QStringLiteral("The browser was closed before the current request completed."));
+                emit owner->closed();
         });
     }
 
@@ -432,14 +504,15 @@ struct BrowserAuth::Private {
         active = false;
         clearRound();
         if (process.state() != QProcess::NotRunning) {
-            if (group <= 0)
-                group = static_cast<pid_t>(process.processId());
+            // group is set only once Qt reports a started browser, whose anchor then exists;
+            // before that, signal only the unreaped leader via QProcess.
             if (group > 0)
                 ::kill(-group, SIGTERM);
             process.terminate();
             if (!process.waitForFinished(1500)) {
                 if (group > 0)
                     ::kill(-group, SIGKILL);
+                group = -1; // The anchor is gone with that SIGKILL; never signal the number again.
                 process.kill();
                 process.waitForFinished(-1);
             }
@@ -447,11 +520,23 @@ struct BrowserAuth::Private {
         if (group > 0)
             ::kill(-group, SIGKILL);
         group = -1;
+        closeFd(anchorWrite);
+        closeFd(anchorRead);
         cleanupTransport();
         // Delete the private profile only after Chromium has exited.
         disposeContext();
         profile.reset();
         stopping = false;
+    }
+
+    // The browser exited (normally because the user closed it): a cancellation.
+    void transportClosed()
+    {
+        const bool notify = active;
+        ++round;
+        shutdownBrowser();
+        if (notify)
+            emit owner->closed();
     }
 
     void transportFailure(const QString& message)
@@ -519,6 +604,15 @@ struct BrowserAuth::Private {
                 closeOneTarget(id);
     }
 
+    // The user closed the sign-in window: a cancellation, not a failure.
+    void closeRound()
+    {
+        if (!active)
+            return;
+        cancelRound();
+        emit owner->closed();
+    }
+
     void failRound(const QString& message)
     {
         if (!active)
@@ -545,6 +639,7 @@ struct BrowserAuth::Private {
         if (!profile->isValid() || !privateMemoryDirectory(profile->path())
             || !createPrivateMemoryDirectory(cache) || !createPrivateMemoryDirectory(temporary)
             || !privatePipe(&childRead, &writeFd) || !privatePipe(&readFd, &childWrite)
+            || !privatePipe(&anchorRead, &anchorWrite)
             || !nonblocking(readFd) || !nonblocking(writeFd)) {
             transportFailure(QStringLiteral("A private sign-in browser could not be prepared."));
             return;
@@ -556,12 +651,11 @@ struct BrowserAuth::Private {
         QObject::connect(writer.get(), &QSocketNotifier::activated, owner, [this] { flushWrites(); });
         const int inputFd = childRead;
         const int outputFd = childWrite;
+        const int holdFd = anchorRead;
         const pid_t parentPid = ::getpid();
-        process.setChildProcessModifier([inputFd, outputFd, parentPid] {
-            if (::prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || ::getppid() != parentPid
-                || ::setsid() < 0 || ::dup2(inputFd, 3) < 0 || ::dup2(outputFd, 4) < 0
-                || ::syscall(SYS_close_range, 5u, ~0u, CLOSE_RANGE_CLOEXEC) < 0)
-                ::_exit(126);
+        QProcess* const child = &process;
+        process.setChildProcessModifier([child, inputFd, outputFd, holdFd, parentPid] {
+            prepareBrowserChild(child, inputFd, outputFd, holdFd, parentPid);
             ::close(inputFd);
             ::close(outputFd);
         });
@@ -570,6 +664,9 @@ struct BrowserAuth::Private {
         environment.insert(QStringLiteral("TMPDIR"), temporary);
         environment.insert(QStringLiteral("TMP"), temporary);
         environment.insert(QStringLiteral("TEMP"), temporary);
+        // Crashpad otherwise keeps its database (and any dumps of sign-in memory)
+        // in the user's real ~/.config/chromium, outside the private stores.
+        environment.insert(QStringLiteral("BREAKPAD_DUMP_LOCATION"), temporary);
         environment.remove(QStringLiteral("CHROMIUM_FLAGS"));
         environment.remove(QStringLiteral("CHROMIUM_USER_FLAGS"));
         environment.remove(QStringLiteral("CHROME_LOG_FILE"));
@@ -600,6 +697,20 @@ struct BrowserAuth::Private {
             QStringLiteral("--disable-background-networking"),
             QStringLiteral("--disable-breakpad"),
             QStringLiteral("--disable-crash-reporter"),
+            QStringLiteral("--disable-component-update"),
+            QStringLiteral("--disable-sync"),
+            QStringLiteral("--no-pings"),
+            QStringLiteral("--disable-domain-reliability"),
+            // --disable-background-networking no longer stops these Chromium services
+            // (push check-in, browser account checks, network time, model and dictionary
+            // downloads). These hosts never serve sign-in pages, so make them unresolvable.
+            // accounts.google.com and www.google.com stay reachable: Windows 365 external
+            // identities and IdPs such as Okta can sign in with Google or use reCAPTCHA.
+            QStringLiteral("--host-resolver-rules=MAP android.clients.google.com ~NOTFOUND, "
+                           "MAP mtalk.google.com ~NOTFOUND, MAP clients2.google.com ~NOTFOUND, "
+                           "MAP *.gvt1.com ~NOTFOUND, "
+                           "MAP update.googleapis.com ~NOTFOUND, "
+                           "MAP optimizationguide-pa.googleapis.com ~NOTFOUND"),
             QStringLiteral("--password-store=basic")
         });
     }
@@ -674,7 +785,7 @@ struct BrowserAuth::Private {
                 return;
             }
             if (count == 0) {
-                transportFailure(QStringLiteral("The browser was closed before the current request completed."));
+                transportClosed();
                 return;
             }
             consumed += count;
@@ -758,7 +869,7 @@ struct BrowserAuth::Private {
                 retainedSession.clear();
             }
             if (id == target)
-                failRound(QStringLiteral("The browser window was closed before the current request completed."));
+                closeRound();
             return;
         }
         if (method == QStringLiteral("Target.detachedFromTarget")) {
@@ -770,7 +881,7 @@ struct BrowserAuth::Private {
                 return;
             }
             if (!session.isEmpty() && pages.value(target).session == session) {
-                failRound(QStringLiteral("The browser connection ended before the current request completed."));
+                closeRound();
             } else {
                 for (auto it = pages.begin(); it != pages.end();) {
                     if (it->session == session)
@@ -1074,11 +1185,12 @@ struct BrowserAuth::Private {
             || page == pages.cend() || !acquisitionPage(page->frames.value(page->mainFrame)))
             return;
         const QJsonArray arguments{command, id, QString::number(portal.generation)};
+        // Numeric context ids are per renderer process: a replacement document can own
+        // this id. Never call a global it could define; the script's own guard rejects it.
         QString expression;
         if (initialize)
-            expression = QStringLiteral("delete globalThis.__omawin365Acquisition; globalThis.__omawin365Step=(")
-                + portal.script + QStringLiteral(");");
-        expression += QStringLiteral("globalThis.__omawin365Step(...")
+            expression = QStringLiteral("delete globalThis.__omawin365Acquisition;");
+        expression += QLatin1Char('(') + portal.script + QStringLiteral(")(...")
             + QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact))
             + QLatin1Char(')');
         portal.busy = true;
@@ -1234,7 +1346,8 @@ struct BrowserAuth::Private {
         const auto page = pages.constFind(target);
         const QString frame = params.value(QStringLiteral("frameId")).toString();
         const bool ownedPortalFrame = page != pages.cend() && page->round == round
-            && frame == page->mainFrame && acquisitionPage(page->frames.value(frame));
+            && frame == page->mainFrame && acquisitionPage(page->frames.value(frame))
+            && portalDownloadSource(QUrl(params.value(QStringLiteral("url")).toString(), QUrl::StrictMode));
         const QString name = params.value(QStringLiteral("suggestedFilename")).toString();
         if (!active || mode != Mode::Acquisition || !download.directory || !ownedPortalFrame
             || download.phase != Download::Phase::Clicked

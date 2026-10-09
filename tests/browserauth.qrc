@@ -1,4 +1,7 @@
 <RCC>
+  <qresource prefix="/icons">
+    <file alias="header.svg">../assets/header.svg</file>
+  </qresource>
   <qresource prefix="/portal">
     <file alias="acquisition.js">../src/portal.js</file>
   </qresource>

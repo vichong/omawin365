@@ -247,25 +247,26 @@ DialogLayout::DialogLayout(QDialog* dialog, Theme* theme)
     m_outer = new QVBoxLayout(dialog);
     m_outer->setSizeConstraint(QLayout::SetNoConstraint);
     m_scroll = new QScrollArea(dialog);
-    // fit() sizes this viewport from its wrapped content, not scroll chrome.
-    m_scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+    // Keep a nonzero size hint for QMessageBox's show-time geometry, before
+    // fit() restores screen-bounded sizing from wrapped content.
+    m_scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_scroll->setWidgetResizable(true);
     m_scroll->setFrameShape(QFrame::NoFrame);
     m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_content = new WrappedContent(m_scroll);
-    details = new QVBoxLayout(m_content);
-    details->setContentsMargins(0, 0, 0, 0);
+    // One scrollable flow keeps both text and actions reachable even when a
+    // host configures less than an action row. Padding scrolls with the content
+    // instead of consuming the tiny viewport's entire interior.
+    m_flow = new QVBoxLayout(m_content);
+    m_flow->setSizeConstraint(QLayout::SetNoConstraint);
+    details = new QVBoxLayout;
+    controls = new QVBoxLayout;
+    m_flow->addLayout(details, 1);
+    m_flow->addLayout(controls);
     m_scroll->setWidget(m_content);
-    m_outer->addWidget(m_scroll, 1);
-    m_controlsScroll = new QScrollArea(dialog);
-    m_controlsScroll->setWidgetResizable(true);
-    m_controlsScroll->setFrameShape(QFrame::NoFrame);
-    m_controlsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_controlContent = new WrappedContent(m_controlsScroll);
-    controls = new QVBoxLayout(m_controlContent);
-    controls->setContentsMargins(0, 0, 0, 0);
-    m_controlsScroll->setWidget(m_controlContent);
-    m_outer->addWidget(m_controlsScroll);
+    m_outer->setContentsMargins(0, 0, 0, 0);
+    m_outer->setSpacing(0);
+    m_outer->addWidget(m_scroll);
     dialog->installEventFilter(this);
     connect(theme, &Theme::changed, this, [this] { applyTheme(); scheduleFit(); });
     applyTheme();
@@ -307,7 +308,6 @@ void DialogLayout::fit(bool preserveWidth)
     const int controlsHeight = qMax(controls->sizeHint().height(), controls->totalHeightForWidth(innerWidth));
     const int height = qMin(qMax(1, available.height()), detailHeight + controlsHeight + gap + 2 * padding);
     m_dialog->setMinimumSize(0, 0);
-    sizeControls(width, height);
     m_dialog->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
     m_dialog->resize(width, height);
     m_outer->activate();
@@ -316,10 +316,6 @@ void DialogLayout::fit(bool preserveWidth)
 
 bool DialogLayout::eventFilter(QObject* watched, QEvent* event)
 {
-    if (watched == m_dialog && event->type() == QEvent::Resize) {
-        const auto* resize = static_cast<QResizeEvent*>(event);
-        sizeControls(resize->size().width(), resize->size().height());
-    }
     if (watched == m_dialog && event->type() == QEvent::Show) scheduleFit();
     // QMessageBox otherwise replaces content-driven sizing with setFixedSize.
     if (watched == m_dialog && event->type() == QEvent::LayoutRequest
@@ -331,30 +327,14 @@ bool DialogLayout::eventFilter(QObject* watched, QEvent* event)
     return QObject::eventFilter(watched, event);
 }
 
-void DialogLayout::sizeControls(int width, int height)
-{
-    const QMargins margins = m_outer->contentsMargins();
-    const int innerWidth = qMax(1, width - margins.left() - margins.right());
-    const int available = qMax(0, height - margins.top() - margins.bottom() - m_outer->spacing()
-        - QFontMetrics(m_dialog->font()).lineSpacing());
-    int wanted = qMax(controls->sizeHint().height(), controls->totalHeightForWidth(innerWidth));
-    if (wanted > available) {
-        const int scrollBar = m_controlsScroll->style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-        wanted = qMax(wanted, controls->totalHeightForWidth(qMax(1, innerWidth - scrollBar)));
-    }
-    // Actions stay pinned normally; only an exceptionally short host scrolls them.
-    m_controlsScroll->setFixedHeight(qMin(wanted, available));
-    m_controlContent->updateWrappedHeight();
-}
-
 void DialogLayout::applyTheme()
 {
     QFont font(m_theme->fontFamily());
     font.setPixelSize(m_theme->fontSize(QStringLiteral("body")));
     m_dialog->setFont(font);
     const int padding = m_theme->spacing(QStringLiteral("panel-padding"), 18);
-    m_outer->setContentsMargins(padding, padding, padding, padding);
-    layoutSpacing(m_outer, m_theme->spacing(QStringLiteral("control-gap"), 8));
+    m_flow->setContentsMargins(padding, padding, padding, padding);
+    layoutSpacing(m_flow, m_theme->spacing(QStringLiteral("control-gap"), 8));
     details->setSpacing(m_theme->spacing(QStringLiteral("control-gap"), 8));
     layoutSpacing(controls, m_theme->spacing(QStringLiteral("control-gap"), 8));
 }

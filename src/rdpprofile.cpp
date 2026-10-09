@@ -2,9 +2,13 @@
 
 #include <QFile>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSet>
 #include <QStringConverter>
 #include <QStringView>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 bool fail(QString* error, const char* message)
@@ -19,9 +23,12 @@ bool dns(QStringView value)
     if (value.isEmpty() || value.size() > 253)
         return false;
     static const QRegularExpression label(QStringLiteral("\\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\z"));
-    static const QRegularExpression ipv4(QStringLiteral("\\A[0-9]+(?:\\.[0-9]+){3}\\z"));
-    if (ipv4.matchView(value).hasMatch())
-        return false; // IP literals are not in the initial DNS-only policy.
+    // IP literals are not in the initial DNS-only policy. libc's getaddrinfo also
+    // accepts inet_aton forms (2130706433, 127.1, 0x7f.0.0.1) as IPv4 without a
+    // lookup; all of them end in a decimal or 0x-hex label, as WHATWG URL hosts do.
+    static const QRegularExpression number(QStringLiteral("\\A(?:[0-9]+|0[Xx][0-9A-Fa-f]*)\\z"));
+    if (number.matchView(value.sliced(value.lastIndexOf(u'.') + 1)).hasMatch())
+        return false;
     for (const auto part : value.split(u'.')) {
         if (!label.matchView(part).hasMatch())
             return false;
@@ -31,7 +38,7 @@ bool dns(QStringView value)
 
 // One declaration owns each key's presence, type and complete value grammar.
 // Literal entries deliberately do not admit upstream ranges or arbitrary strings.
-enum class Value { Dns, Gateway, Arm, Routing, Program, Uuid, Literal, Desktop, Activity, Hub };
+enum class Value { Dns, Gateway, Arm, Routing, Program, Uuid, Literal, BooleanLiteral, Geo, Desktop, Diagnostic, Activity, Hub, OpaqueMetadata };
 struct Rule {
     const char* key;
     char type;
@@ -50,9 +57,9 @@ constexpr Rule rules[] = {
     {"redirectwebauthn", 'i', Value::Literal, "1"},
     {"wvd endpoint pool", 's', Value::Uuid},
     {"workspace id", 's', Value::Uuid},
-    {"geo", 's', Value::Literal, "EU"},
+    {"geo", 's', Value::Geo},
     {"alternate full address", 's', Value::Dns}, // Also compared to full address after all lines.
-    {"diagnosticserviceurl", 's', Value::Literal, "https://rdweb-g-eu-r1.wvd.microsoft.com/api/arm/DiagnosticEvents/v1"},
+    {"diagnosticserviceurl", 's', Value::Diagnostic},
     {"hubdiscoverygeourl", 's', Value::Hub},
     {"remotedesktopname", 's', Value::Desktop},
     {"activityhint", 's', Value::Activity},
@@ -73,14 +80,25 @@ constexpr Rule rules[] = {
     {"gatewaycredentialssource", 'i', Value::Literal, "0"},
     {"remoteapplicationmode", 'i', Value::Literal, "0"},
     {"audiomode", 'i', Value::Literal, "0"},
-    {"enablerdsaadauth", 'i', Value::Literal, "0"},
+    {"enablerdsaadauth", 'i', Value::BooleanLiteral},
+    {"forcehidpioptimizations", 'i', Value::BooleanLiteral},
     {"clientrejectinjectedinput", 'i', Value::Literal, "0"},
     {"rdgiskdcproxy", 'i', Value::Literal, "0"},
     {"camerastoredirect", 's', Value::Literal, "*"},
     {"devicestoredirect", 's', Value::Literal, "*"},
     {"drivestoredirect", 's', Value::Literal, "*"},
     {"usbdevicestoredirect", 's', Value::Literal, "*"},
+    {"signature", 's', Value::OpaqueMetadata},
+    {"signscope", 's', Value::OpaqueMetadata},
 };
+
+bool opaqueMetadata(QStringView value)
+{
+    // Global control/line parsing and supportedValue's ASCII guard constrain
+    // this single-line value to printable ASCII. No decoding or trust verdict;
+    // the unchanged whole-file byte limit is the sole size budget.
+    return !value.isEmpty() && !value.startsWith(u' ') && !value.endsWith(u' ');
+}
 
 const Rule* findRule(const QString& key)
 {
@@ -108,11 +126,19 @@ bool supportedValue(const Rule& rule, QStringView value)
         QStringLiteral("(?i:/resourcegroups/)[A-Za-z0-9_-]{1,90}(?i:/providers/Microsoft\\.DesktopVirtualization/hostpools/)[A-Za-z0-9_-]{1,64}\\z"));
     static const QRegularExpression desktop(QStringLiteral("\\ACloud PC Enterprise ") + positive +
         QStringLiteral("vCPU/") + positive + QStringLiteral("GB/") + positive + QStringLiteral("GB\\z"));
+    // Bounded stored-metadata policy, not a geography enum or trusted endpoint registry.
+    static const QString token = QStringLiteral("[A-Za-z][A-Za-z0-9_]{0,31}");
+    static const QString authority = QStringLiteral("rdweb-g-[a-z]{2,16}-r[0-9]\\.(?:wvd\\.microsoft\\.com|wvd\\.azure\\.us)");
+    static const QRegularExpression geo(QStringLiteral("\\A") + token + QStringLiteral("\\z"));
+    static const QRegularExpression diagnostic(QStringLiteral("\\Ahttps://") + authority +
+        QStringLiteral("/api/arm/DiagnosticEvents/v1\\z"));
     // Match encoded punctuation literally: no decoding, alternate JSON or URL forms.
     static const QRegularExpression activity(QStringLiteral("\\Ams-wvd-ep:") + uuid +
-        QStringLiteral("\\?ScaleUnitPath=\\{\"Geo\"%3a\"EU\"%2c\"Ring\"%3a[0-9]%2c\"Region\"%3a\"westeurope\"%2c\"ScaleUnit\"%3a") +
+        QStringLiteral("\\?ScaleUnitPath=\\{\"Geo\"%3a\"") + token +
+        QStringLiteral("\"%2c\"Ring\"%3a[0-9]%2c\"Region\"%3a\"[a-z](?:[a-z0-9-]{0,30}[a-z0-9])?\"%2c\"ScaleUnit\"%3a") +
         positive + QStringLiteral("\\}\\z"));
-    static const QRegularExpression hub(QStringLiteral("\\Ahttps://rdweb-g-eu-r1\\.wvd\\.microsoft\\.com/api/arm/hubdiscovery\\?resourceId=") + uuid + QStringLiteral("\\z"));
+    static const QRegularExpression hub(QStringLiteral("\\Ahttps://") + authority +
+        QStringLiteral("/api/arm/hubdiscovery\\?resourceId=") + uuid + QStringLiteral("\\z"));
     switch (rule.value) {
     case Value::Dns: return dns(value);
     case Value::Gateway:
@@ -124,9 +150,13 @@ bool supportedValue(const Rule& rule, QStringView value)
     case Value::Program: return program.matchView(value).hasMatch();
     case Value::Uuid: return identifier.matchView(value).hasMatch();
     case Value::Literal: return value == QLatin1StringView(rule.literal);
+    case Value::BooleanLiteral: return value == u"0" || value == u"1";
+    case Value::Geo: return geo.matchView(value).hasMatch();
     case Value::Desktop: return desktop.matchView(value).hasMatch();
+    case Value::Diagnostic: return diagnostic.matchView(value).hasMatch();
     case Value::Activity: return activity.matchView(value).hasMatch();
     case Value::Hub: return hub.matchView(value).hasMatch();
+    case Value::OpaqueMetadata: return opaqueMetadata(value);
     }
     return false;
 }
@@ -204,6 +234,8 @@ bool RdpProfile::validate(const QByteArray& bytes, QString* error)
         return fail(error, "The connection file contains an invalid setting value.");
     if (!required.subtract(seen).isEmpty())
         return fail(error, "The connection file is missing a required supported setting.");
+    if (seen.contains(QStringLiteral("signature")) != seen.contains(QStringLiteral("signscope")))
+        return fail(error, "The connection file is missing a required supported setting.");
     return true;
 }
 
@@ -211,8 +243,16 @@ bool RdpProfile::readAndValidate(const QString& path, QByteArray* bytes, QString
 {
     if (error)
         error->clear();
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > maximumBytes)
+    // Callers check the pathname first. Open without blocking and require the
+    // opened object to be a regular file, so a swapped-in FIFO cannot stall.
+    const int fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+    if (fd < 0)
+        return fail(error, "The connection file must be readable and no larger than 1 MiB.");
+    const auto closeFd = qScopeGuard([fd] { ::close(fd); });
+    struct stat st {};
+    QFile file;
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || !file.open(fd, QIODevice::ReadOnly)
+        || file.size() <= 0 || file.size() > maximumBytes)
         return fail(error, "The connection file must be readable and no larger than 1 MiB.");
     QByteArray captured = file.read(maximumBytes + 1);
     if (file.error() != QFileDevice::NoError || captured.size() > maximumBytes || !file.atEnd())

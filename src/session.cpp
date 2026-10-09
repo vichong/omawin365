@@ -24,6 +24,7 @@
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <cstring>
 #include <sys/wait.h>
 #include <termios.h>
@@ -57,6 +58,36 @@ QProcessEnvironment freerdpEnvironment()
     return environment;
 }
 
+// Developer builds only (qmake CONFIG+=dev_stderr_log): OMAWIN365_FREERDP_STDERR_LOG=/path
+// appends FreeRDP's raw, unredacted stderr to a private file. Release builds never log it (INV-3).
+void teeFreeRdpStderr([[maybe_unused]] const char* data, [[maybe_unused]] size_t size)
+{
+#ifdef OMAWIN365_DEV_STDERR_LOG
+    static const QByteArray path = qgetenv("OMAWIN365_FREERDP_STDERR_LOG");
+    if (path.isEmpty() || !path.startsWith('/'))
+        return;
+    const int fd = open(path.constData(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0)
+        return;
+    // O_CREAT's mode does not tighten an existing file: require a private regular file we own.
+    struct stat st {};
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != getuid() || (st.st_mode & 077)) {
+        close(fd);
+        return;
+    }
+    while (size > 0) {
+        const ssize_t written = write(fd, data, size);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0)
+            break;
+        data += written;
+        size -= size_t(written);
+    }
+    close(fd);
+#endif
+}
+
 int aboveStdio(int fd)
 {
     if (fd < 0 || fd >= 3)
@@ -64,6 +95,19 @@ int aboveStdio(int fd)
     const int duplicate = fcntl(fd, F_DUPFD_CLOEXEC, 3);
     close(fd);
     return duplicate;
+}
+
+// Observes exit without reaping. An unreaped child, running or zombie, keeps its
+// PID and process-group number reserved, so signalling either cannot reach a
+// recycled process. Returns 1 when exited, 0 while running, -1 (errno) otherwise.
+int childExited(pid_t child)
+{
+    siginfo_t info{};
+    int result;
+    while ((result = waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT)) < 0 && errno == EINTR) {}
+    if (result < 0)
+        return -1;
+    return info.si_pid == child ? 1 : 0;
 }
 
 int staleWindowError(Display*, XErrorEvent*)
@@ -143,6 +187,7 @@ struct Session::State {
     enum class VersionCheck { Idle, Checking, Ending };
     enum class Awaiting { Nothing, Authorization, Pin };
     pid_t child = -1;
+    bool childForeign = false; // Reaped elsewhere (ECHILD): never signal its number again.
     int master = -1;
     int diagnosticsFd = -1;
     QSocketNotifier* diagnosticsReader = nullptr;
@@ -308,17 +353,20 @@ Session::~Session()
         // Also applied when the event loop is already gone. PDEATHSIG protects an
         // abrupt parent death; the normal path kills the entire owned process group.
         const pid_t child = state_->child;
-        kill(-child, SIGTERM);
-        kill(child, SIGTERM);
+        int exited = state_->childForeign ? -1 : childExited(child);
+        if (exited == 0) {
+            kill(-child, SIGTERM);
+            kill(child, SIGTERM);
+        }
         QElapsedTimer deadline;
         deadline.start();
-        int status = 0;
-        pid_t result = 0;
-        while ((result = waitpid(child, &status, WNOHANG)) == 0 && deadline.elapsed() < 200)
+        while (exited == 0 && (exited = childExited(child)) == 0 && deadline.elapsed() < 200)
             usleep(10000);
-        kill(-child, SIGKILL);
-        if (result == 0) {
+        if (exited >= 0) {
+            // Still our unreaped child: kill the group before the reap frees its number.
+            kill(-child, SIGKILL);
             kill(child, SIGKILL);
+            int status = 0;
             while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
         }
         state_->child = -1;
@@ -549,6 +597,7 @@ void Session::startTransport(const QString& profilePath)
     }
     state_->master = master;
     state_->child = child;
+    state_->childForeign = false;
     const quint64 epoch = ++state_->transportEpoch;
     state_->diagnosticsFd = diagnosticPipe[0];
     state_->diagnosticParser.reset();
@@ -677,8 +726,10 @@ void Session::stopTransport()
     if (state_->writer)
         state_->writer->setEnabled(false);
     state_->stoppingTime.start();
-    kill(-child, SIGTERM);
-    kill(child, SIGTERM); // Covers the brief interval before child setsid().
+    if (!state_->childForeign) {
+        kill(-child, SIGTERM);
+        kill(child, SIGTERM); // Covers the brief interval before child setsid().
+    }
     if (!state_->failed) {
         emit statusChanged(QStringLiteral("disconnecting"), pinCancelled
                 ? QStringLiteral("PIN cancelled. FreeRDP cannot cancel this request separately; disconnecting the desktop.")
@@ -694,6 +745,7 @@ void Session::readDiagnostics()
         char buffer[4096];
         const ssize_t count = read(state_->diagnosticsFd, buffer, sizeof(buffer));
         if (count > 0) {
+            teeFreeRdpStderr(buffer, size_t(count));
             const auto events = state_->diagnosticParser.feed(QByteArray::fromRawData(buffer, count));
             for (const auto& event : events) {
                 if (event.kind == PromptParser::Kind::Diagnostic)
@@ -755,11 +807,11 @@ void Session::rejectCertificate(const QString& message)
     state_->written = 0;
     if (state_->writer)
         state_->writer->setEnabled(false);
-    if (newlyStopping) {
+    if (newlyStopping && !state_->childForeign) {
         state_->stoppingTime.start();
         kill(-child, SIGTERM);
-        // In a final drain waitpid has already reaped the leader; its numeric
-        // PID is no longer ours. Otherwise also cover the pre-setsid interval.
+        // In a final drain the leader has already exited (still unreaped);
+        // otherwise also cover the pre-setsid interval.
         if (!state_->finalizing)
             kill(child, SIGTERM);
     }
@@ -1000,19 +1052,22 @@ void Session::checkChild()
     const quint64 epoch = state_->transportEpoch;
     const pid_t child = state_->child;
     const int master = state_->master;
-    if (state_->stopping && !state_->killSent && state_->stoppingTime.elapsed() >= 2000) {
+    // Probe before any signal: reap only after the final drains and group kill
+    // below, so nothing they signal can be a recycled PID or process group.
+    const int exited = childExited(child);
+    if (exited < 0 && errno != ECHILD) {
+        fail(QStringLiteral("Could not monitor the owned FreeRDP process."));
+        return;
+    }
+    if (exited < 0)
+        state_->childForeign = true; // Nothing below may signal this number.
+    if (exited == 0 && state_->stopping && !state_->killSent && state_->stoppingTime.elapsed() >= 2000) {
         state_->killSent = true;
         kill(-child, SIGKILL);
         kill(child, SIGKILL);
     }
-    int status = 0;
-    const pid_t result = waitpid(child, &status, WNOHANG);
-    if (result == 0 || (result < 0 && errno == EINTR))
+    if (exited == 0)
         return;
-    if (result < 0 && errno != ECHILD) {
-        fail(QStringLiteral("Could not monitor the owned FreeRDP process."));
-        return;
-    }
     // Fence before final drains: these can reject a certificate and deliver
     // signals whose receivers run nested event loops. Reap/cleanup only once.
     state_->finalizing = true;
@@ -1025,7 +1080,12 @@ void Session::checkChild()
     if (!ownsTransport(epoch, child, master)) return;
     const bool requestedStop = state_->stopping;
     const bool wasConnected = state_->desktopConnected;
-    kill(-child, SIGKILL); // No helpers survive the owned session leader.
+    int status = 0;
+    pid_t result = -1;
+    if (exited > 0) {
+        kill(-child, SIGKILL); // No helpers survive the owned session leader.
+        while ((result = waitpid(child, &status, 0)) < 0 && errno == EINTR) {}
+    }
     state_->child = -1;
     releaseTransport();
     state_->clearAttempt();

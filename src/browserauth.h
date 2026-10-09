@@ -24,6 +24,8 @@ public slots:
 signals:
     void callbackReady(const OAuthContract::Callback& result);
     void failed(const QString& message);
+    // The user closed the sign-in window or browser before the request completed.
+    void closed();
     void resourcesAvailable(const QStringList& ids, const QStringList& names);
     void profileDownloaded(const QString& temporaryPath, const QString& displayName);
     void status(const QString& message);

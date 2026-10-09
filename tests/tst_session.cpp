@@ -6,6 +6,28 @@
 #include <QtTest>
 #include "../src/session.cpp"
 
+namespace {
+pid_t auditedChild = 0;
+int signalsWhileReserved = 0;
+int signalsAfterReap = 0;
+}
+
+// Interposes libc kill() for this test binary and forwards every call unchanged.
+// For the audited child it records whether that PID and its process-group number
+// were still reserved by our unreaped child (running or zombie) when signalled.
+// A signal after the reap could reach a recycled PID or group.
+extern "C" int kill(pid_t pid, int signal) noexcept
+{
+    if (auditedChild > 0 && (pid == auditedChild || pid == -auditedChild)) {
+        siginfo_t info{};
+        if (waitid(P_PID, id_t(auditedChild), &info, WEXITED | WNOHANG | WNOWAIT) == 0)
+            ++signalsWhileReserved;
+        else
+            ++signalsAfterReap;
+    }
+    return int(syscall(SYS_kill, pid, signal));
+}
+
 struct SessionTestAccess {
     using Awaiting = Session::State::Awaiting;
     using VersionCheck = Session::State::VersionCheck;
@@ -157,6 +179,100 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((SessionTestAccess::reap(session), ended.count() == 1), 3000);
         QVERIFY(!session.active());
         QVERIFY(!QFileInfo::exists(config));
+    }
+    void exitedLeaderNeverSignalledAfterReap_data()
+    {
+        QTest::addColumn<QString>("path");
+        QTest::newRow("final-reap") << QStringLiteral("final-reap");
+        QTest::newRow("final-drain-failure") << QStringLiteral("final-drain-failure");
+        QTest::newRow("destructor") << QStringLiteral("destructor");
+    }
+    void exitedLeaderNeverSignalledAfterReap()
+    {
+        QFETCH(QString, path);
+        auto session = std::make_unique<Session>();
+        QVERIFY(SessionTestAccess::ownChild(*session));
+        auto& state = SessionTestAccess::state(*session);
+        const pid_t child = state.child;
+        int descriptors[2] = {-1, -1};
+        if (path == QStringLiteral("final-drain-failure")) {
+            // Reading the write end fails, so the final drain reaches fail() -> stop().
+            QCOMPARE(::pipe2(descriptors, O_CLOEXEC), 0);
+            state.master = descriptors[1]; // Session closes it on release.
+        }
+        const auto closeReader = qScopeGuard([&] { if (descriptors[0] >= 0) ::close(descriptors[0]); });
+        QSignalSpy ended(session.get(), &Session::ended);
+        QSignalSpy errors(session.get(), &Session::error);
+        // The leader exits on its own and stays an unreaped zombie.
+        QCOMPARE(syscall(SYS_kill, child, SIGKILL), 0L);
+        QTRY_VERIFY_WITH_TIMEOUT(([child] {
+            siginfo_t info{};
+            return waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT) == 0 && info.si_pid == child;
+        }()), 3000);
+        signalsWhileReserved = signalsAfterReap = 0;
+        auditedChild = child;
+        const auto stopAudit = qScopeGuard([] { auditedChild = 0; });
+        if (path == QStringLiteral("destructor"))
+            session.reset();
+        else
+            SessionTestAccess::reap(*session);
+        auditedChild = 0;
+        QCOMPARE(signalsAfterReap, 0);
+        QVERIFY(signalsWhileReserved > 0); // The group kill still happens, while reserved.
+        siginfo_t info{};
+        QCOMPARE(waitid(P_PID, id_t(child), &info, WEXITED | WNOHANG | WNOWAIT), -1);
+        QCOMPARE(errno, ECHILD); // Reaped exactly once, by Session.
+        if (session) {
+            QCOMPARE(ended.count(), 1);
+            QVERIFY(!session->active());
+            if (path == QStringLiteral("final-drain-failure"))
+                QCOMPARE(errors.first().first().toString(), QStringLiteral("The private FreeRDP terminal could not be read."));
+        }
+    }
+    void foreignReapedChildNeverSignalled_data()
+    {
+        QTest::addColumn<QString>("path");
+        QTest::newRow("final-drain-failure") << QStringLiteral("final-drain-failure");
+        QTest::newRow("destructor") << QStringLiteral("destructor");
+        QTest::newRow("stop-escalation") << QStringLiteral("stop-escalation");
+    }
+    void foreignReapedChildNeverSignalled()
+    {
+        QFETCH(QString, path);
+        auto session = std::make_unique<Session>();
+        QVERIFY(SessionTestAccess::ownChild(*session));
+        auto& state = SessionTestAccess::state(*session);
+        const pid_t child = state.child;
+        int descriptors[2] = {-1, -1};
+        if (path == QStringLiteral("final-drain-failure")) {
+            // Reading the write end fails, so the final drain reaches fail() -> stop().
+            QCOMPARE(::pipe2(descriptors, O_CLOEXEC), 0);
+            state.master = descriptors[1]; // Session closes it on release.
+        }
+        const auto closeReader = qScopeGuard([&] { if (descriptors[0] >= 0) ::close(descriptors[0]); });
+        // Someone else reaps the leader first: its number is no longer ours (ECHILD).
+        QCOMPARE(syscall(SYS_kill, child, SIGKILL), 0L);
+        int status = 0;
+        QCOMPARE(waitpid(child, &status, 0), child);
+        if (path == QStringLiteral("stop-escalation")) {
+            // A requested stop whose 2 s grace period has expired would escalate to SIGKILL.
+            state.stopping = true;
+            state.killSent = false;
+            state.stoppingTime.start();
+            QTest::qWait(2100);
+        }
+        signalsWhileReserved = signalsAfterReap = 0;
+        auditedChild = child;
+        const auto stopAudit = qScopeGuard([] { auditedChild = 0; });
+        if (path == QStringLiteral("destructor"))
+            session.reset();
+        else
+            SessionTestAccess::reap(*session);
+        auditedChild = 0;
+        QCOMPARE(signalsAfterReap, 0);
+        QCOMPARE(signalsWhileReserved, 0);
+        if (session)
+            QVERIFY(!session->active());
     }
     void executableLaunchFailure_data()
     {

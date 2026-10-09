@@ -5,6 +5,18 @@
 #include <QCoreApplication>
 #include <QUrlQuery>
 #include <cstdio>
+#include <sys/syscall.h>
+
+// Counts process-group signals sent while no process or group holds the number:
+// the precondition for a recycled number reaching an unrelated process.
+static int unreservedGroupSignals = 0;
+extern "C" int kill(pid_t pid, int signal) noexcept
+{
+    if (pid < -1 && signal != 0 && syscall(SYS_kill, pid, 0) != 0 && errno == ESRCH
+        && syscall(SYS_kill, -pid, 0) != 0 && errno == ESRCH)
+        ++unreservedGroupSignals;
+    return int(syscall(SYS_kill, pid, signal));
+}
 
 struct BrowserAuthTestAccess {
     static void useSyntheticBrowser(BrowserAuth& browser, const QString& scenario, const QString& trace)
@@ -170,12 +182,13 @@ struct BrowserAuthTestAccess {
             // A dedicated idle child supplies real QProcess running/teardown
             // semantics; no Chromium or network is involved. CDP goes to our pipe.
             const pid_t parent = ::getpid();
-            state.process.setChildProcessModifier([parent] {
-                if (::prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || ::getppid() != parent || ::setsid() < 0)
-                    ::_exit(126);
-            });
+            if (!privatePipe(&state.anchorRead, &state.anchorWrite)) return false;
+            const int hold = state.anchorRead;
+            QProcess* const child = &state.process;
+            state.process.setChildProcessModifier([child, parent, hold] { prepareBrowserChild(child, -1, -1, hold, parent); });
             state.process.start(QCoreApplication::applicationFilePath(), {"--idle-transport"});
             const bool started = state.process.waitForStarted(3000);
+            closeFd(state.anchorRead);
             const bool piped = started && privatePipe(&capture.reader, &state.writeFd)
                 && nonblocking(capture.reader);
             check(piped, "isolated lifecycle transport started");
@@ -452,6 +465,27 @@ int main(int argc, char** argv)
     BrowserAuthTestAccess::handoff(check);
     publicBrowserTests(check);
 
+    {
+        // An anchor that cannot confirm its setup must fail the start, so no group
+        // without an anchor is ever published as a started browser.
+        QProcess process;
+        QProcess* const child = &process;
+        const pid_t parent = ::getpid();
+        process.setChildProcessModifier([child, parent] { prepareBrowserChild(child, -1, -1, -1, parent); });
+        bool started = false;
+        QObject::connect(&process, &QProcess::started, [&started] { started = true; });
+        process.start(QCoreApplication::applicationFilePath(), {"--idle-transport"});
+        check(!process.waitForStarted(3000) && process.error() == QProcess::FailedToStart && !started,
+              "browser anchor setup failure is reported as a failed start");
+    }
+    {
+        const QString page = QUrl::fromPercentEncoding(completionPage().toLatin1());
+        check(page.startsWith("data:text/html;charset=utf-8,") && page.contains("<div class=logo><svg")
+              && page.contains("<title id=\"title\">OMAWIN365</title>")
+              && !page.contains("src=") && !page.contains("href=") && !page.contains("url("),
+              "sign-in return page shows the inlined OMAWIN365 logo and loads nothing external");
+    }
+    check(unreservedGroupSignals == 0, "browser process-group signals never reach an unreserved group number");
     std::printf("BrowserAuth assertions: %d; failures: %d.\n", assertions, failures);
     if (failures == 0)
         std::puts("Browser authorization and acquisition boundary checks passed.");

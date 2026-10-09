@@ -7,6 +7,8 @@
 #include "browserauth.h"
 #include "profilestore.h"
 #include "window_fixture.h"
+#include "windowpresentation.h"
+#include "theme.h"
 
 #include <QApplication>
 #include <QAbstractButton>
@@ -22,6 +24,10 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSettings>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QScreen>
+#include <QVBoxLayout>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <memory>
@@ -73,6 +79,27 @@ QDialog* prompt(QWidget* root, const QString& title)
 {
     for (auto* child : root->findChildren<QDialog*>())
         if (child->isVisible() && child->windowTitle() == title) return child;
+    return nullptr;
+}
+bool fullyVisible(QWidget* widget)
+{
+    return widget && widget->isVisible() && QRegion(widget->rect()).subtracted(widget->visibleRegion()).isEmpty();
+}
+bool reveal(QWidget* widget)
+{
+    if (!widget) return false;
+    for (QWidget* parent = widget->parentWidget(); parent; parent = parent->parentWidget()) {
+        if (auto* scroll = qobject_cast<QScrollArea*>(parent)) {
+            scroll->ensureWidgetVisible(widget, 0, 0);
+            QCoreApplication::processEvents();
+        }
+    }
+    return fullyVisible(widget);
+}
+QWidget* acquisitionPanel(QWidget* root)
+{
+    for (auto* panel : root->findChildren<QWidget*>("acquisitionPanel"))
+        if (panel->isVisible()) return panel;
     return nullptr;
 }
 void settle()
@@ -142,6 +169,310 @@ private:
         });
     }
 private slots:
+    void acquisitionInitialFocusAndAutomaticScroll_data()
+    {
+        QTest::addColumn<QSize>("bounds");
+        QTest::newRow("natural") << QSize();
+        QTest::newRow("short") << QSize(252, 120);
+    }
+    void acquisitionInitialFocusAndAutomaticScroll()
+    {
+        QFETCH(QSize, bounds);
+        openWindow();
+        if (bounds.isValid()) { window->resize(bounds); settle(); }
+        auto* get = button(window.get(), "Get a Cloud PC connection");
+        QVERIFY(get);
+        get->setFocus();
+        QTRY_COMPARE(QApplication::focusWidget(), get);
+        get->click();
+        auto* panel = acquisitionPanel(window.get());
+        QVERIFY(panel);
+        auto* cancel = button(panel, "Cancel");
+        QVERIFY(cancel);
+        settle();
+        // No reveal(), ensureWidgetVisible() or scrollbar manipulation here.
+        QVERIFY2(fullyVisible(cancel), "Automatic scroll did not expose complete Cancel");
+        QCOMPARE(QApplication::focusWidget(), cancel);
+        cancel->click();
+        settle();
+        QCOMPARE(QApplication::focusWidget(), get);
+        QCOMPARE(controls.cancellations, 1);
+        QVERIFY(controls.starts.isEmpty());
+    }
+    void acquisitionTabOrderAndUserFocus()
+    {
+        openWindow();
+        auto* get = button(window.get(), "Get a Cloud PC connection");
+        auto* about = button(window.get(), "About…");
+        QVERIFY(get && about);
+        get->setFocus();
+        QTRY_COMPARE(QApplication::focusWidget(), get);
+        get->click();
+        auto* panel = acquisitionPanel(window.get());
+        QVERIFY(panel);
+        auto* cancel = button(panel, "Cancel");
+        auto* manual = button(panel, "Import a trusted .rdpw instead…");
+        auto* resources = accessible<QListWidget>(panel, "Available Microsoft Cloud PCs");
+        auto* download = button(panel, "Download selected connection");
+        QVERIFY(cancel && manual && resources && download);
+        QCOMPARE(QApplication::focusWidget(), cancel);
+        // A user's move before the queued layout/scroll must not be overwritten.
+        QTest::keyClick(cancel, Qt::Key_Backtab);
+        QCOMPARE(QApplication::focusWidget(), manual);
+        settle();
+        QCOMPARE(QApplication::focusWidget(), manual);
+        QTest::keyClick(manual, Qt::Key_Tab);
+        QCOMPARE(QApplication::focusWidget(), cancel);
+        QTest::keyClick(cancel, Qt::Key_Tab);
+        QCOMPARE(QApplication::focusWidget(), about);
+        QTest::keyClick(about, Qt::Key_Backtab);
+        QCOMPARE(QApplication::focusWidget(), cancel);
+        emit browser->resourcesAvailable({"pc-a", "pc-b"}, {"Cloud A", "Cloud B"});
+        settle();
+        QCOMPARE(QApplication::focusWidget(), resources);
+        resources->setCurrentRow(0);
+        QVERIFY(download->isEnabled());
+        QTest::keyClick(resources, Qt::Key_Tab);
+        QCOMPARE(QApplication::focusWidget(), download);
+        QTest::keyClick(download, Qt::Key_Tab);
+        QCOMPARE(QApplication::focusWidget(), manual);
+        QTest::keyClick(manual, Qt::Key_Tab);
+        QCOMPARE(QApplication::focusWidget(), cancel);
+        // Cancel invoked while the user has deliberately left the panel does
+        // not force focus back to Get.
+        about->setFocus();
+        QCOMPARE(QApplication::focusWidget(), about);
+        cancel->click();
+        settle();
+        QCOMPARE(QApplication::focusWidget(), about);
+        QCOMPARE(controls.cancellations, 1);
+        QVERIFY(controls.starts.isEmpty());
+    }
+    void acquisitionPresentationPreservesExternalFocus()
+    {
+        openWindow();
+        QWidget other;
+        auto* otherButton = new QPushButton("Synthetic other window", &other);
+        controls.onAcquire = [&other, otherButton] {
+            other.show();
+            other.activateWindow();
+            otherButton->setFocus();
+        };
+        auto* get = button(window.get(), "Get a Cloud PC connection");
+        QVERIFY(get);
+        get->setFocus();
+        QTRY_COMPARE(QApplication::focusWidget(), get);
+        get->click();
+        QTRY_VERIFY(other.isActiveWindow());
+        QTRY_COMPARE(QApplication::focusWidget(), otherButton);
+        settle();
+        QVERIFY(!window->isActiveWindow());
+        QCOMPARE(QApplication::focusWidget(), otherButton);
+        auto* panel = acquisitionPanel(window.get());
+        QVERIFY(panel);
+        auto* cancel = button(panel, "Cancel");
+        QVERIFY(cancel);
+        cancel->click(); // An external/queued cancellation is not activation.
+        settle();
+        QVERIFY(other.isActiveWindow());
+        QCOMPARE(QApplication::focusWidget(), otherButton);
+        QCOMPARE(controls.cancellations, 1);
+        QVERIFY(controls.starts.isEmpty());
+        controls.onAcquire = {};
+    }
+    void downloadErrorReadable_data()
+    {
+        QTest::addColumn<int>("fontSize");
+        QTest::addColumn<QSize>("bounds");
+        QTest::newRow("body12-natural") << 12 << QSize();
+        QTest::newRow("body24-natural") << 24 << QSize();
+        QTest::newRow("body12-short") << 12 << QSize(246, 76);
+        QTest::newRow("body24-short") << 24 << QSize(492, 152);
+    }
+    void downloadErrorReadable()
+    {
+        QFETCH(int, fontSize);
+        QFETCH(QSize, bounds);
+        QVERIFY(QDir().mkpath(temporary->filePath("config/omarchy")));
+        QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"),
+            QByteArray("[font]\nbase-size = ") + QByteArray::number(fontSize) + "\n"));
+        openWindow();
+        controls.onAcquire = [this] { emit browser->failed("Diagnostic acquisition already used; close this app."); };
+        QVERIFY(click(window.get(), "Get a Cloud PC connection"));
+        settle();
+        auto* box = qobject_cast<QMessageBox*>(prompt(window.get(), "Connection download stopped"));
+        QVERIFY(box);
+        if (bounds.isValid()) { box->resize(bounds); settle(); }
+        auto* text = box->findChild<QLabel*>("qt_msgbox_label");
+        auto* ok = box->button(QMessageBox::Ok);
+        QVERIFY(text && ok);
+        if (!bounds.isValid()) {
+            QVERIFY2(fullyVisible(text), "Natural fit unnecessarily clips text");
+            QVERIFY2(fullyVisible(ok), "Natural fit unnecessarily clips OK");
+        }
+        QVERIFY(text->height() >= text->heightForWidth(text->width()));
+        QVERIFY2(reveal(text), "Error text cannot be fully exposed by scrolling");
+        QVERIFY2(reveal(ok), "Complete OK action cannot be exposed by scrolling");
+        QVERIFY(click(box, "OK"));
+        settle();
+        QVERIFY(!prompt(window.get(), "Connection download stopped"));
+        QVERIFY(controls.starts.isEmpty());
+    }
+    void acquisitionGuidanceInline_data()
+    {
+        QTest::addColumn<int>("fontSize");
+        QTest::newRow("body12") << 12;
+        QTest::newRow("body24") << 24;
+    }
+    void acquisitionGuidanceInline()
+    {
+        QFETCH(int, fontSize);
+        QVERIFY(QDir().mkpath(temporary->filePath("config/omarchy")));
+        QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"),
+            QByteArray("[font]\nbase-size = ") + QByteArray::number(fontSize) + "\n"));
+        openWindow();
+        window->resize(fontSize * 21, fontSize * 10);
+        settle();
+        QVERIFY(click(window.get(), "Get a Cloud PC connection"));
+        settle();
+        QVERIFY(!prompt(window.get(), "OMAWIN365 · get a Cloud PC connection"));
+        auto* panel = window->findChild<QWidget*>("acquisitionPanel");
+        QVERIFY(panel && panel->isVisible() && !panel->isWindow());
+        auto* status = accessible<QLabel>(panel, "Connection download status");
+        QVERIFY(status);
+        emit browser->status("Synthetic sign-in waiting");
+        QCOMPARE(status->text(), "Synthetic sign-in waiting");
+        auto* resources = accessible<QListWidget>(panel, "Available Microsoft Cloud PCs");
+        QVERIFY(resources && !resources->isVisible());
+        QVERIFY(!button(panel, "Download selected connection")->isVisible());
+        auto* cancel = button(panel, "Cancel");
+        QVERIFY(cancel && reveal(cancel));
+        const int changedFont = fontSize == 12 ? 24 : 12;
+        QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"),
+            QByteArray("[font]\nbase-size = ") + QByteArray::number(changedFont) + "\n"));
+        QTRY_COMPARE(window->font().pixelSize(), changedFont);
+        settle();
+        QCOMPARE(cancel->font().pixelSize(), changedFont);
+        QVERIFY(reveal(cancel));
+        QVERIFY(!prompt(window.get(), "OMAWIN365 · get a Cloud PC connection"));
+        QVERIFY(click(panel, "Cancel"));
+        settle();
+        QCOMPARE(controls.cancellations, 1);
+        QCOMPARE(controls.acquisitions, 1);
+        QVERIFY(controls.starts.isEmpty());
+    }
+    void staleInlineCancelCannotCancelReplacement()
+    {
+        openWindow();
+        QVERIFY(click(window.get(), "Get a Cloud PC connection"));
+        auto* oldPanel = acquisitionPanel(window.get());
+        QVERIFY(oldPanel);
+        QPointer<QPushButton> oldCancel = button(oldPanel, "Cancel");
+        QVERIFY(oldCancel);
+        oldCancel->click();
+        QCOMPARE(controls.cancellations, 1);
+        button(window.get(), "Get a Cloud PC connection")->click();
+        QCOMPARE(controls.acquisitions, 2);
+        QVERIFY(oldCancel); // Before deferred deletion, model an old queued action.
+        oldCancel->click();
+        QCOMPARE(controls.cancellations, 1);
+        settle();
+        auto* replacement = acquisitionPanel(window.get());
+        QVERIFY(replacement);
+        QCOMPARE(QApplication::focusWidget(), button(replacement, "Cancel"));
+        QVERIFY(click(replacement, "Cancel"));
+        QCOMPARE(controls.cancellations, 2);
+        QVERIFY(controls.starts.isEmpty());
+    }
+    void dialogLayoutTinyAndThemeReload()
+    {
+        QVERIFY(QDir().mkpath(temporary->filePath("config/omarchy")));
+        QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"), "[font]\nbase-size = 12\n"));
+        Theme theme;
+        QMessageBox box(QMessageBox::Warning, "Connection download stopped",
+            "Diagnostic acquisition already used; close this app.", QMessageBox::Ok);
+        WindowPresentation::themeMessageBox(&box, &theme);
+        box.show(); settle();
+        auto* text = box.findChild<QLabel*>("qt_msgbox_label");
+        auto* ok = box.button(QMessageBox::Ok);
+        QVERIFY(text && ok);
+        for (int fontSize : {12, 24}) {
+            QVERIFY(QDir().mkpath(temporary->filePath("config/omarchy")));
+            QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"),
+                QByteArray("[font]\nbase-size = ") + QByteArray::number(fontSize) + "\n"));
+            QTRY_COMPARE(theme.fontSize("body"), fontSize);
+            settle();
+            QCOMPARE(box.font().pixelSize(), fontSize);
+            QVERIFY(box.width() <= box.screen()->availableGeometry().width());
+            QVERIFY(box.height() <= box.screen()->availableGeometry().height());
+            box.resize(fontSize * 21, fontSize * 7); settle();
+            QVERIFY(reveal(text));
+            QVERIFY(reveal(ok));
+            // Less than one action row: every part must still be scroll-reachable.
+            box.resize(fontSize * 21, qMax(1, ok->height() / 2)); settle();
+            QRegion seen, textSeen;
+            auto* scroll = box.findChild<QScrollArea*>();
+            QVERIFY(scroll);
+            auto* bar = scroll->verticalScrollBar();
+            for (int offset = 0; offset <= bar->maximum(); ++offset) {
+                bar->setValue(offset);
+                QCoreApplication::processEvents();
+                seen += ok->visibleRegion();
+                textSeen += text->visibleRegion();
+            }
+            QVERIFY2(QRegion(ok->rect()).subtracted(seen).isEmpty(), "Tiny dialog has unreachable action pixels");
+            QVERIFY2(QRegion(text->rect()).subtracted(textSeen).isEmpty(), "Tiny dialog has unreachable text pixels");
+        }
+    }
+    void sharedDialogControlsReadable_data()
+    {
+        QTest::addColumn<int>("fontSize");
+        QTest::addColumn<bool>("pin");
+        QTest::newRow("confirmation12") << 12 << false;
+        QTest::newRow("confirmation24") << 24 << false;
+        QTest::newRow("pin12") << 12 << true;
+        QTest::newRow("pin24") << 24 << true;
+    }
+    void sharedDialogControlsReadable()
+    {
+        QFETCH(int, fontSize);
+        QFETCH(bool, pin);
+        QVERIFY(QDir().mkpath(temporary->filePath("config/omarchy")));
+        QVERIFY(writeFile(temporary->filePath("config/omarchy/shell.toml"),
+            QByteArray("[font]\nbase-size = ") + QByteArray::number(fontSize) + "\n"));
+        if (pin) {
+            seed();
+            openWindow();
+            QVERIFY(click(window.get(), "Connect"));
+            emit session->pinRequested("Synthetic key challenge");
+            auto* box = prompt(window.get(), "OMAWIN365 · security key PIN");
+            QVERIFY(box);
+            auto* input = accessible<QLineEdit>(box, "Security key PIN");
+            QVERIFY(input);
+            QTRY_VERIFY(input->isEnabled());
+            box->resize(fontSize * 21, fontSize * 7); settle();
+            QCOMPARE(input->echoMode(), QLineEdit::Password);
+            QVERIFY(reveal(input));
+            QVERIFY(reveal(button(box, "Submit PIN")));
+            QVERIFY(reveal(button(box, "Cancel and disconnect")));
+            QVERIFY(click(box, "Cancel and disconnect"));
+            QCOMPARE(controls.stops, 1);
+            QVERIFY(controls.pins.isEmpty());
+        } else {
+            Theme theme;
+            QMessageBox box(QMessageBox::Question, "Import trusted connection",
+                "Only import a connection you trust.", QMessageBox::Cancel | QMessageBox::Ok);
+            box.setDefaultButton(QMessageBox::Cancel);
+            WindowPresentation::themeMessageBox(&box, &theme);
+            box.open(); settle();
+            box.resize(fontSize * 21, fontSize * 7); settle();
+            QVERIFY(reveal(box.button(QMessageBox::Ok)));
+            QVERIFY(reveal(box.button(QMessageBox::Cancel)));
+            QCOMPARE(box.defaultButton(), box.button(QMessageBox::Cancel));
+            QTest::keyClick(&box, Qt::Key_Return);
+            QCOMPARE(box.result(), int(QMessageBox::Cancel));
+        }
+    }
     void initTestCase()
     {
         QCOMPARE(QGuiApplication::platformName(), "offscreen");
@@ -252,12 +583,25 @@ private slots:
         else if (action == "shortcut") QTest::keyClick(window.get(), Qt::Key_Return, Qt::ControlModifier);
         else QTest::keyClick(profiles(), Qt::Key_Return);
         QCOMPARE(controls.starts, QStringList{second.path});
-        QVERIFY(!profiles()->isEnabled());
+        // The connected Cloud PC is marked, visibly and for screen readers.
+        QCOMPARE(profiles()->item(1)->text(), "● Second");
+        QCOMPARE(profiles()->item(1)->data(Qt::AccessibleTextRole).toString(), "Second, connected");
+        QCOMPARE(profiles()->item(0)->text(), "First");
+        // The list stays usable during a session, but can never start a second one.
+        QVERIFY(profiles()->isEnabled());
         QVERIFY(!button(window.get(), "Connect")->isVisible());
         QVERIFY(button(window.get(), "Disconnect")->isEnabled());
         QVERIFY(!button(window.get(), "Import .rdpw…")->isEnabled());
         QVERIFY(!button(window.get(), "Get a Cloud PC connection")->isEnabled());
-        QVERIFY(!button(window.get(), "Remove…")->isEnabled());
+        QVERIFY(!button(window.get(), "Remove…")->isEnabled()); // The connected profile.
+        QTest::keyClick(window.get(), Qt::Key_Return, Qt::ControlModifier);
+        QCOMPARE(controls.starts.size(), 1);
+        QTest::mouseClick(profiles()->viewport(), Qt::LeftButton, Qt::NoModifier,
+            profiles()->visualItemRect(profiles()->item(0)).center());
+        QCOMPARE(profiles()->currentItem()->text(), "First");
+        QVERIFY(button(window.get(), "Remove…")->isEnabled()); // Not the connected profile.
+        QVERIFY(button(window.get(), "Rename…")->isEnabled());
+        QTest::keyClick(profiles(), Qt::Key_Return);
         QTest::keyClick(window.get(), Qt::Key_Return, Qt::ControlModifier);
         QCOMPARE(controls.starts.size(), 1);
         emit session->connected();
@@ -271,8 +615,41 @@ private slots:
         QCOMPARE(phase()->text(), "Ready");
         QVERIFY(button(window.get(), "Connect")->isEnabled());
         QVERIFY(profiles()->isEnabled());
+        QCOMPARE(profiles()->item(1)->text(), "Second");
         settle();
         QCOMPARE(controls.starts.size(), 1);
+    }
+    void idlePromptNamesSelection()
+    {
+        seed("First");
+        seed("Second");
+        openWindow();
+        const auto prompt = [this](const QString& text) {
+            for (auto* label : window->findChildren<QLabel*>())
+                if (label->isVisible() && label->text() == text) return true;
+            return false;
+        };
+        QVERIFY(prompt(QStringLiteral("Press Connect or Enter to open %1.").arg(profiles()->currentItem()->text())));
+        profiles()->setCurrentRow(1);
+        QVERIFY(prompt(QStringLiteral("Press Connect or Enter to open Second.")));
+    }
+    void profileListShowsSeveralRows()
+    {
+        seed("First");
+        seed("Second");
+        openWindow();
+        const auto rowsVisible = [this] {
+            const int row = profiles()->sizeHintForRow(0);
+            return row > 0 ? profiles()->viewport()->height() / row : 0;
+        };
+        QVERIFY(rowsVisible() >= 2);
+        QVERIFY(!profiles()->verticalScrollBar()->isVisible());
+        window.reset();
+        for (int index = 3; index <= 10; ++index)
+            seed(QStringLiteral("Cloud PC %1").arg(index));
+        openWindow();
+        QCOMPARE(profiles()->count(), 10);
+        QVERIFY(rowsVisible() >= 6);
     }
     void reconnectWaitsForEnded_data()
     {
@@ -778,12 +1155,52 @@ private slots:
         QCOMPARE(controls.starts.size(), 2);
         QCOMPARE(phase()->text(), "Connecting");
     }
+    void connectedDesktopClosesSignInWindow()
+    {
+        seed();
+        openWindow();
+        QVERIFY(click(window.get(), "Connect"));
+        emit session->authRequested(QUrl("https://login.microsoftonline.com/fixture/oauth2/authorize"));
+        const int before = controls.cancellations;
+        emit session->connected();
+        // The sign-in window's job is done once the desktop is up.
+        QCOMPARE(controls.cancellations, before + 1);
+        QCOMPARE(phase()->text(), "Connected");
+    }
+    void closingSignInWindowCancelsCalmly()
+    {
+        seed();
+        openWindow();
+        QVERIFY(click(window.get(), "Connect"));
+        emit session->authRequested(QUrl("https://login.microsoftonline.com/fixture/oauth2/authorize"));
+        emit browser->closed();
+        QCOMPARE(controls.stops, 1); // The pending connection is stopped for the user.
+        QVERIFY(!prompt(window.get(), "Sign-in stopped"));
+        finish();
+        QCOMPARE(phase()->text(), "Ready");
+        bool explained = false;
+        for (auto* label : window->findChildren<QLabel*>())
+            explained = explained || label->text()
+                == "Sign-in window closed, so the connection was cancelled. Press Connect to try again.";
+        QVERIFY(explained);
+        QVERIFY(button(window.get(), "Connect")->isEnabled());
+    }
+    void closingAcquisitionWindowCancelsCalmly()
+    {
+        openWindow();
+        controls.onAcquire = [this] { emit browser->closed(); };
+        QVERIFY(click(window.get(), "Get a Cloud PC connection"));
+        settle();
+        QVERIFY(!prompt(window.get(), "Connection download stopped"));
+        QCOMPARE(phase()->text(), "Ready");
+        QVERIFY(button(window.get(), "Get a Cloud PC connection")->isEnabled());
+    }
     void acquisitionRequiresExplicitChoiceAndRefreshClearsSelection()
     {
         openWindow();
         QVERIFY(click(window.get(), "Get a Cloud PC connection"));
         QCOMPARE(controls.acquisitions, 1);
-        auto* guide = prompt(window.get(), "OMAWIN365 · get a Cloud PC connection");
+        auto* guide = acquisitionPanel(window.get());
         QVERIFY(guide);
         auto* resources = accessible<QListWidget>(guide, "Available Microsoft Cloud PCs");
         auto* download = button(guide, "Download selected connection");
@@ -794,7 +1211,7 @@ private slots:
         settle();
         QCOMPARE(resources->count(), 2);
         QVERIFY(resources->selectedItems().isEmpty());
-        QVERIFY(download->isDefault());
+        QVERIFY(!download->autoDefault());
         QVERIFY(!download->isEnabled());
         QTest::keyClick(resources, Qt::Key_Return);
         QVERIFY(controls.selections.isEmpty());
@@ -834,7 +1251,7 @@ private slots:
         openWindow();
         controls.onAcquire = [this] { emit browser->status("Synthetic browser opening portal"); };
         QVERIFY(click(window.get(), "Get a Cloud PC connection"));
-        auto* guide = prompt(window.get(), "OMAWIN365 · get a Cloud PC connection");
+        auto* guide = acquisitionPanel(window.get());
         QVERIFY(guide);
         QPointer<QLabel> downloadStatus = accessible<QLabel>(guide, "Connection download status");
         auto* panel = window->findChild<QWidget*>("statusPanel");
@@ -876,7 +1293,7 @@ private slots:
         QVERIFY(writeFile(source, "Borrowed source no longer valid"));
         QCOMPARE(readFile(store->profiles().first().path), profileBytes);
         settle();
-        QVERIFY(!prompt(window.get(), "OMAWIN365 · get a Cloud PC connection"));
+        QVERIFY(!acquisitionPanel(window.get()));
         QCOMPARE(controls.cancellations, 0);
         QVERIFY(button(window.get(), "Connect")->isEnabled());
         QCOMPARE(profiles()->currentItem()->text(), "Downloaded Cloud PC");
@@ -899,7 +1316,7 @@ private slots:
         if (!synchronous) emit browser->failed("Synthetic acquisition failure");
         settle();
         QCOMPARE(phase()->text(), "Connection download stopped");
-        QVERIFY(!prompt(window.get(), "OMAWIN365 · get a Cloud PC connection"));
+        QVERIFY(!acquisitionPanel(window.get()));
         auto* error = qobject_cast<QMessageBox*>(prompt(window.get(), "Connection download stopped"));
         QVERIFY(error);
         QCOMPARE(error->text(), "Synthetic acquisition failure");
@@ -915,7 +1332,7 @@ private slots:
         controls.active = true; // External activity is not import permission.
         emit browser->profileDownloaded(source, "Ignored");
         QVERIFY(store->profiles().isEmpty());
-        auto* guide = prompt(window.get(), "OMAWIN365 · get a Cloud PC connection");
+        auto* guide = acquisitionPanel(window.get());
         QVERIFY(guide);
         QVERIFY(click(guide, "Cancel"));
         controls.active = false;
@@ -925,7 +1342,7 @@ private slots:
     {
         openWindow();
         QVERIFY(click(window.get(), "Get a Cloud PC connection"));
-        auto* guide = prompt(window.get(), "OMAWIN365 · get a Cloud PC connection");
+        auto* guide = acquisitionPanel(window.get());
         QVERIFY(guide);
         QTimer::singleShot(0, window.get(), [this] {
             // Window queues opening the chooser first; this timer follows it.
@@ -933,7 +1350,7 @@ private slots:
                 auto* chooser = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
                 QVERIFY(chooser);
                 QCOMPARE(chooser->windowTitle(), "Import Cloud PC connection");
-                QVERIFY(!prompt(window.get(), "OMAWIN365 · get a Cloud PC connection"));
+                QVERIFY(!acquisitionPanel(window.get()));
                 QVERIFY(click(chooser, "Cancel"));
             });
         });
@@ -978,15 +1395,15 @@ private slots:
     {
         openWindow();
         QVERIFY(click(window.get(), "Get a Cloud PC connection"));
-        auto* guide = prompt(window.get(), "OMAWIN365 · get a Cloud PC connection");
+        auto* guide = acquisitionPanel(window.get());
         QVERIFY(guide);
-        // During the old guide's finished signal, start a replacement which
-        // fails synchronously. All other delayed-import guards become true;
-        // only the operation identity must suppress the old queued chooser.
-        connect(guide, &QDialog::finished, window.get(), [this] {
+        // During cancellation's synchronous outward callback, start a
+        // replacement which fails. Only the generation fence must suppress
+        // the old manual action's queued chooser.
+        controls.onCancel = [this] {
             controls.onAcquire = [this] { emit browser->failed("Synthetic replacement failure"); };
             button(window.get(), "Get a Cloud PC connection")->click();
-        });
+        };
         QTimer::singleShot(300, window.get(), [] {
             if (auto* chooser = qobject_cast<QFileDialog*>(QApplication::activeModalWidget())) {
                 QTest::qFail("Stale manual action opened a chooser", __FILE__, __LINE__);
@@ -1108,6 +1525,21 @@ private slots:
         QCOMPARE(store->profiles().first().name, "Original label");
         QVERIFY(!button(window.get(), "Rename…")->isEnabled());
         QCOMPARE(controls.stops, 0);
+    }
+    void aboutShowsBuildVersion()
+    {
+        // main.cpp sets the version stamped by the build (package pkgver-pkgrel or git commit).
+        const QString previous = QCoreApplication::applicationVersion();
+        const auto restore = qScopeGuard([previous] { QCoreApplication::setApplicationVersion(previous); });
+        QCoreApplication::setApplicationVersion(QStringLiteral("0.0.10.locala4e9ddc3a1a466dc-1"));
+        openWindow();
+        QVERIFY(click(window.get(), "About…"));
+        auto* about = prompt(window.get(), "About OMAWIN365");
+        QVERIFY(about);
+        bool shown = false;
+        for (auto* label : about->findChildren<QLabel*>())
+            shown = shown || label->text() == QStringLiteral("Version 0.0.10.locala4e9ddc3a1a466dc-1 · pre-release");
+        QVERIFY(shown);
     }
     void aboutReusesDialogAndReopensAfterDeletion()
     {

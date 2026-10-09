@@ -71,7 +71,6 @@ public:
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 private:
-    void sizeControls(int width, int height);
     void applyTheme();
     void scheduleFit();
     QDialog* m_dialog;
@@ -79,8 +78,7 @@ private:
     QVBoxLayout* m_outer;
     QScrollArea* m_scroll;
     WrappedContent* m_content;
-    QScrollArea* m_controlsScroll;
-    WrappedContent* m_controlContent;
+    QVBoxLayout* m_flow;
     bool m_fitPending = false;
 };
 

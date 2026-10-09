@@ -18,6 +18,10 @@
 #include <sys/prctl.h>
 #include <sys/resource.h>
 
+#ifndef OMAWIN365_VERSION
+#define OMAWIN365_VERSION "dev" // Set by omawin365.pro from the package or git commit.
+#endif
+
 namespace {
 int fail(const QString& message)
 {
@@ -108,7 +112,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("omawin365"));
     QCoreApplication::setOrganizationName(QStringLiteral("omawin365"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(OMAWIN365_VERSION));
     QApplication::setApplicationDisplayName(QStringLiteral("OMAWIN365"));
     QApplication::setDesktopFileName(QStringLiteral("omawin365"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/omawin365.svg")));

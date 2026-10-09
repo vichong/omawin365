@@ -96,6 +96,7 @@ private slots:
     void changedCertificateUsesNewFingerprint();
     void certificateInjectedOrDuplicateFieldsFail();
     void overflowCannotPromoteSuffixToPrompt();
+    void spaceHeavyLinesStayLinear();
     void unsupportedAndControlPromptsFail();
     void diagnosticsCannotExposeRawSecrets();
     void diagnosticsRecognizePrefixedLines_data();
@@ -467,6 +468,27 @@ void PromptParserTest::overflowCannotPromoteSuffixToPrompt()
     QVERIFY(!containsKind(events, PromptParser::Kind::Pin));
     QVERIFY(!containsKind(parser.feed("Paste redirect URL here: \n"), PromptParser::Kind::Authorization));
     QVERIFY(containsKind(parser.feed("FIDO2 PIN: "), PromptParser::Kind::Pin));
+}
+
+void PromptParserTest::spaceHeavyLinesStayLinear()
+{
+    // Every space re-checks prompt completion; that check must not rescan the line.
+    PromptParser parser;
+    const QByteArray line = QByteArray(PromptParser::maximumLine - 1, ' ') + '\n';
+    QElapsedTimer timer;
+    timer.start();
+    for (int i = 0; i < 8; ++i)
+        QVERIFY(parser.feed(line).isEmpty());
+    QVERIFY2(timer.elapsed() < 1000, qPrintable(QStringLiteral("%1 ms").arg(timer.elapsed())));
+    // A question mark followed by a space still ends an unsupported prompt once.
+    for (const QByteArray& value : {QByteArray("Accept? later: \n"), QByteArray("    Continue? (Y/N) \n")}) {
+        PromptParser question;
+        const auto events = question.feed(value);
+        QCOMPARE(events.size(), 1);
+        QCOMPARE(events.front().kind, PromptParser::Kind::UnsupportedPrompt);
+    }
+    PromptParser browse;
+    QVERIFY(browse.feed("Browse to: what? next ").isEmpty());
 }
 
 void PromptParserTest::unsupportedAndControlPromptsFail()

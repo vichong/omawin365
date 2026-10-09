@@ -5,6 +5,8 @@
 namespace {
 const QString CallbackEndpoint = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 const QString PortalEndpoint = "https://client.wvd.microsoft.com/arm/webclient/index.html";
+// The portal builds the file in page script; a same-origin blob is that shape.
+const QString PortalDownload = "blob:https://client.wvd.microsoft.com/3f1c2a4e-0000-4000-8000-000000000001";
 
 QUrl syntheticAuthorization(const QString& state = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 {
@@ -189,6 +191,8 @@ class SyntheticChromium {
         if (scenario == "duplicate-state") url += "&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         if (scenario == "mixed-code-error") url += "&error=denied";
         if (scenario == "fragment") url += "#fragment";
+        // Fails strict URL parsing: must be aborted as invalid, never continued as non-callback.
+        if (scenario == "malformed-callback") url = CallbackEndpoint + "?code=%zz&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         if (scenario == "oauth-error") url = CallbackEndpoint + "?error=access_denied&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         if (scenario == "foreign-origin") url = "https://attacker.invalid/common/oauth2/nativeclient?code=synthetic-code";
         if (scenario == "foreign-path") url = "https://login.microsoftonline.com/other?code=synthetic-code";
@@ -201,8 +205,10 @@ class SyntheticChromium {
     void download(const QString& session)
     {
         const QString frame = "frame-" + session;
-        const auto begin = [&](const QString& id, const QString& sourceFrame, const QString& name) {
-            event("Browser.downloadWillBegin", {{"guid", id}, {"frameId", sourceFrame}, {"suggestedFilename", name}});
+        const auto begin = [&](const QString& id, const QString& sourceFrame, const QString& name,
+                               const QString& url = PortalDownload) {
+            event("Browser.downloadWillBegin", {{"guid", id}, {"frameId", sourceFrame}, {"url", url},
+                                                {"suggestedFilename", name}});
         };
         if (scenario == "navigate-after-click")
             event("Page.frameNavigated", {{"frame", QJsonObject{{"id", frame}, {"url", PortalEndpoint}}}}, session);
@@ -211,7 +217,12 @@ class SyntheticChromium {
         if (scenario == "invalid-guid") { begin("../invalid", frame, "Cloud PC.rdpw"); return; }
         if (scenario == "empty-progress-clicked")
             event("Browser.downloadProgress", {{"guid", ""}, {"state", "canceled"}});
-        begin(guid, frame, "Cloud PC.rdpw");
+        // Chromium 152 reports the owned main frame for a download caused by a
+        // foreign child frame navigating top; only the URL names that source.
+        if (scenario == "foreign-download-source") begin(guid, frame, "Cloud PC.rdpw", "https://attacker.invalid/Cloud%20PC.rdpw");
+        else if (scenario == "foreign-blob-download-source")
+            begin(guid, frame, "Cloud PC.rdpw", "blob:https://attacker.invalid/3f1c2a4e-0000-4000-8000-000000000002");
+        else begin(guid, frame, "Cloud PC.rdpw");
         if (scenario == "foreign-progress-receiving") {
             event("Browser.downloadProgress", {{"guid", ""}, {"state", "canceled"}});
             event("Browser.downloadProgress", {{"guid", "22222222-2222-2222-2222-222222222222"}, {"state", "canceled"}});
@@ -293,7 +304,7 @@ class SyntheticChromium {
                     event("Browser.downloadProgress", {{"guid", ""}, {"state", "canceled"}});
                 if (scenario == "unarmed-download")
                     event("Browser.downloadWillBegin", {{"guid", "22222222-2222-2222-2222-222222222222"},
-                        {"frameId", "frame-" + session}, {"suggestedFilename", "Unarmed.rdpw"}});
+                        {"frameId", "frame-" + session}, {"url", PortalDownload}, {"suggestedFilename", "Unarmed.rdpw"}});
             } else if (url.startsWith("https://login.microsoftonline.com/")) {
                 event("Page.frameNavigated", {{"frame", QJsonObject{
                     {"id", "frame-" + session}, {"url", url}}}}, session);
@@ -337,7 +348,7 @@ public:
         QJsonObject environment;
         for (const auto& key : {"XDG_CACHE_HOME", "TMPDIR", "TMP", "TEMP", "HOME", "XDG_CONFIG_HOME",
                                 "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY",
-                                "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"})
+                                "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "BREAKPAD_DUMP_LOCATION"})
             environment.insert(QLatin1String(key), qEnvironmentVariable(key));
         bool storageWrites = true;
         if (scenario == "storage") {
@@ -500,10 +511,23 @@ void browserStorageTests(const std::function<void(bool, const char*)>& check)
                   && arguments.contains("--user-data-dir=" + profile)
                   && arguments.contains("--disk-cache-dir=" + cache),
                   "synthetic argv pins automation plus private profile and explicit disk-cache path");
+            QStringList rules;
+            for (const auto& argument : arguments)
+                if (argument.toString().startsWith("--host-resolver-rules="))
+                    rules.append(argument.toString());
+            // Exact value: sign-in hosts such as accounts.google.com and www.google.com stay resolvable.
+            check(arguments.contains("--disable-component-update") && arguments.contains("--disable-sync")
+                  && arguments.contains("--no-pings") && arguments.contains("--disable-domain-reliability")
+                  && rules == QStringList{"--host-resolver-rules=MAP android.clients.google.com ~NOTFOUND, "
+                                          "MAP mtalk.google.com ~NOTFOUND, MAP clients2.google.com ~NOTFOUND, "
+                                          "MAP *.gvt1.com ~NOTFOUND, MAP update.googleapis.com ~NOTFOUND, "
+                                          "MAP optimizationguide-pa.googleapis.com ~NOTFOUND"},
+                  "Chromium background services and their Google hosts are disabled or unresolvable");
             const auto child = metadata.value("environment").toObject();
             check(child.value("XDG_CACHE_HOME") == cache && child.value("TMPDIR") == temporary
                   && child.value("TMP") == temporary && child.value("TEMP") == temporary
-                  && child.value("XDG_RUNTIME_DIR") == root,
+                  && child.value("XDG_RUNTIME_DIR") == root
+                  && child.value("BREAKPAD_DUMP_LOCATION") == temporary,
                   "child cache/temp environment overrides stay beneath the owned profile");
             bool unchanged = true;
             for (auto it = preserved.begin(); it != preserved.end(); ++it)
@@ -604,7 +628,8 @@ void publicBrowserTests(const std::function<void(bool, const char*)>& outerCheck
         ++cases;
     }
     for (const auto& scenario : {"wrong-state", "missing-state", "duplicate-code", "duplicate-state",
-                                 "mixed-code-error", "fragment", "oauth-error", "post", "subframe", "not-document"}) {
+                                 "mixed-code-error", "fragment", "malformed-callback", "oauth-error", "post", "subframe",
+                                 "not-document"}) {
         SyntheticRuntime runtime;
         BrowserAuth browser;
         BrowserAuthTestAccess::useSyntheticBrowser(browser, scenario, runtime.trace());
@@ -733,6 +758,53 @@ void publicBrowserTests(const std::function<void(bool, const char*)>& outerCheck
             check(emptyProgress && (QString(scenario) != "foreign-progress-receiving" || foreignProgress),
                   "empty/foreign GUID progress stimuli reached the process seam");
         }
+        ++cases;
+    }
+    for (const auto& scenario : {"foreign-download-source", "foreign-blob-download-source"}) {
+        SyntheticRuntime runtime;
+        BrowserAuth browser;
+        BrowserAuthTestAccess::useSyntheticBrowser(browser, scenario, runtime.trace());
+        int downloads = 0, failures = 0;
+        QObject::connect(&browser, &BrowserAuth::resourcesAvailable, [&](const QStringList& ids, const QStringList&) {
+            if (!ids.isEmpty()) browser.selectResource("first");
+        });
+        QObject::connect(&browser, &BrowserAuth::profileDownloaded, [&] { ++downloads; });
+        QObject::connect(&browser, &BrowserAuth::failed, [&] { ++failures; });
+        browser.beginProfileDownload();
+        const bool delivered = eventually([&] { return downloads || failures; }, 1500);
+        const QByteArray name = QByteArray("armed portal frame never imports a download from another source: ") + scenario;
+        check(!delivered && downloads == 0 && failures == 0
+              && emitted(runtime.trace(), "Browser.downloadProgress")
+              && cancellationsFor(runtime.trace(), "11111111-1111-1111-1111-111111111111") == 1, name.constData());
+        browser.cancel();
+        ++cases;
+    }
+    {
+        // Numeric isolated-world ids are per renderer process. Chromium 152 resolved a stale
+        // id in a cross-site replacement document and called that document's own step global.
+        SyntheticRuntime runtime;
+        BrowserAuth browser;
+        BrowserAuthTestAccess::useSyntheticBrowser(browser, "download", runtime.trace());
+        int downloads = 0, failures = 0;
+        QObject::connect(&browser, &BrowserAuth::resourcesAvailable, [&](const QStringList& ids, const QStringList&) {
+            if (!ids.isEmpty()) browser.selectResource("first");
+        });
+        QObject::connect(&browser, &BrowserAuth::profileDownloaded, [&] { ++downloads; });
+        QObject::connect(&browser, &BrowserAuth::failed, [&] { ++failures; });
+        browser.beginProfileDownload();
+        QFile source(":/portal/acquisition.js");
+        const QString script = source.open(QIODevice::ReadOnly) ? QString::fromUtf8(source.readAll()) : QString();
+        int evaluations = 0;
+        bool selfContained = !script.isEmpty() && eventually([&] { return downloads || failures; }) && downloads == 1;
+        for (const auto& item : transcript(runtime.trace())) {
+            if (item.value("method") != "Runtime.evaluate") continue;
+            ++evaluations;
+            const QString expression = item.value("params").toObject().value("expression").toString();
+            selfContained = selfContained && expression.contains('(' + script + ")(")
+                && !expression.contains("__omawin365Step");
+        }
+        check(evaluations == 2 && selfContained,
+              "every portal step evaluates its own guarded script, never a global a replacement document could define");
         ++cases;
     }
     for (const auto& scenario : {"empty-file", "oversize-file", "symlink-file", "hardlink-file",
@@ -904,21 +976,23 @@ void publicBrowserTests(const std::function<void(bool, const char*)>& outerCheck
         SyntheticRuntime runtime;
         BrowserAuth browser;
         BrowserAuthTestAccess::useSyntheticBrowser(browser, scenario, runtime.trace());
-        int callbacks = 0, failures = 0;
+        int callbacks = 0, failures = 0, closes = 0;
         QString failureMessage;
         QObject::connect(&browser, &BrowserAuth::callbackReady, [&] { ++callbacks; });
         QObject::connect(&browser, &BrowserAuth::failed, [&](const QString& message) { ++failures; failureMessage = message; });
+        QObject::connect(&browser, &BrowserAuth::closed, [&] { ++closes; });
         browser.begin(syntheticAuthorization());
-        const QByteArray name = QByteArray("owned transport failure reports once and cleans private state: ") + scenario;
-        check(eventually([&] { return failures; }) && failures == 1 && callbacks == 0
+        const bool closedByUser = QString(scenario) == "child-exit";
+        const QByteArray name = QByteArray("owned transport end reports once and cleans private state: ") + scenario;
+        check(eventually([&] { return failures + closes; }) && failures + closes == 1 && callbacks == 0
               && eventually([&] {
                   const QString profile = transcript(runtime.trace()).value(0).value("profile").toString();
                   return !profile.isEmpty() && !QFileInfo::exists(profile);
               }), name.constData());
-        check(failureMessage == (QString(scenario) == "child-exit"
-              ? "The browser was closed before the current request completed."
-              : "The sign-in browser sent an invalid protocol message."),
-              "owned transport failure preserves its exact closed-browser or malformed-protocol message");
+        // A browser that exits mid-request was closed by the user: a cancel, not an error.
+        check(closedByUser ? (closes == 1 && failures == 0)
+                           : (failures == 1 && failureMessage == "The sign-in browser sent an invalid protocol message."),
+              "closed browser is reported as a cancel; a malformed protocol message stays an error");
         ++cases;
     }
     {

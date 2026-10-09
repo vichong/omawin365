@@ -1,8 +1,8 @@
 # Local prototype, NOT submission/release approval. See ../README.md.
 pkgname=omawin365-freerdp
 pkgver=3.32.1
-pkgrel=1
-pkgdesc='Private stock FreeRDP provider for OMAWIN365 (SSO and camera client off)'
+pkgrel=3
+pkgdesc='Private FreeRDP provider for OMAWIN365 (SSO and camera client off, wildcard SAN fix)'
 arch=('x86_64')
 url='https://www.freerdp.com/'
 license=('Apache-2.0' 'MIT' 'LGPL-2.1-or-later' 'LicenseRef-uwac')
@@ -15,12 +15,22 @@ depends=('alsa-lib' 'e2fsprogs' 'ffmpeg' 'fuse3' 'glibc' 'icu' 'jansson'
 makedepends=('cmake' 'pkgconf' 'python')
 _commit=bf217a504e54cc719880c228e82353382cd7d4fa
 source=("FreeRDP-$_commit.tar.gz::https://github.com/FreeRDP/FreeRDP/archive/$_commit.tar.gz"
-        'configure.sh' 'accepted-features.txt' 'check-contract.py' 'uwac-NOTICES.txt')
+        'configure.sh' 'accepted-features.txt' 'check-contract.py' 'uwac-NOTICES.txt'
+        '0003-accept-wildcard-dns-san.patch')
 sha256sums=('4a25a61f2e81f8d8832634c6d457edc1b48fc76630cf58c06695a27afdbbecca'
             'cf5b269e8d58804fca9aeccb58a1683499df04ba1ddc2b86cfef1bbe4424227e'
             'a22256b9f5f916cbf103eeb4fae8110ebc89c22125437a223a8aea6f7fed16fc'
             '90fff62b295aa2d517797af6da997a324612a3c9669883b220eaec0282531d20'
-            'fb1fb33971be8d78ec542c502f0f6c93f1b67228692cb160c394ef239d94cf64')
+            'fb1fb33971be8d78ec542c502f0f6c93f1b67228692cb160c394ef239d94cf64'
+            'f6f3084f4ba2d6637e752d22f9bac19e37b6b9401129a1b3d9569b5d6a8c369e')
+
+prepare() {
+  # Upstream WinPR's non-uriparser URL regex rejects '*', so FreeRDP dropped
+  # wildcard certificate names (e.g. *.wvd.microsoft.com) and reported a
+  # gateway name mismatch for valid Windows 365 certificates.
+  patch --directory="$srcdir/FreeRDP-$_commit" --strip=1 --fuzz=0 --forward \
+    < "$srcdir/0003-accept-wildcard-dns-san.patch"
+}
 
 build() {
   # Recipe chooses cmake via explicit PATH discovery, never inherited CMAKE.

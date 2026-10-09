@@ -10,8 +10,11 @@ import sys
 
 
 def main():
-    if len(sys.argv) != 3:
-        raise ValueError('usage: prepare-snapshot.py CHECKOUT NEW-OUTSIDE-DIRECTORY')
+    if len(sys.argv) not in (3, 4):
+        raise ValueError('usage: prepare-snapshot.py CHECKOUT NEW-OUTSIDE-DIRECTORY [BASE-VERSION]')
+    base = sys.argv[3] if len(sys.argv) == 4 else '0.0.0'
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', base):
+        raise ValueError('BASE-VERSION must look like 0.0.10')
     checkout = Path(sys.argv[1]).resolve(strict=True)
     out = Path(sys.argv[2]).resolve()
     env = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null')
@@ -41,7 +44,7 @@ def main():
     with archive.open('rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
     launcher_digest = hashlib.sha256(launcher).hexdigest()
-    values = {'@PKGVER@': '0.0.0.local' + commit[:16], '@ARCHIVE_SHA256@': digest,
+    values = {'@PKGVER@': base + '.local' + commit[:16], '@ARCHIVE_SHA256@': digest,
               '@LAUNCHER_SHA256@': launcher_digest}
     for key, value in values.items():
         if template.count(key) != 1:
