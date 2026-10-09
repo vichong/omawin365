@@ -4,11 +4,13 @@
 
 **Pre-release. Looking for reviewers.** OMAWIN365 is a native Qt launcher for Windows 365 Cloud PCs on Omarchy/Arch. It signs in to Microsoft in a private Chromium window and opens your Cloud PC with FreeRDP in a separate window. Importing a connection never connects automatically.
 
+**Why it exists: your security key works *inside* the Cloud PC.** Signing in to Windows 365 with a FIDO2 security key works in supported browsers, Omarchy included. But in my testing the browser-based client couldn't redirect a local key into the remote session, so sign-ins *inside* the Cloud PC (Microsoft 365, admin portals, websites) can't use it. OMAWIN365 uses FreeRDP's WebAuthn redirection: when something in the session asks for your key, a native PIN prompt appears on your Omarchy desktop, and you touch your local key. No raw USB passthrough is involved.
+
 It works end to end with Windows 365 Enterprise on the maintainer's tenant, including:
 
 - downloading the connection file from the portal,
 - Microsoft sign-in with a hardware security key,
-- in-session PIN and touch prompts,
+- in-session security-key sign-ins (native PIN prompt, then touch),
 - reconnect, cancel and wrong-PIN recovery.
 
 Other tenants and editions are untested. It has had extensive AI-assisted review but **no independent human security review yet**. Please [help review it](#help-review-it) before trusting it with a work account.
