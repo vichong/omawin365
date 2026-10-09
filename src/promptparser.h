@@ -6,7 +6,7 @@
 #include <QString>
 #include <QUrl>
 
-// Stock FreeRDP 3.32.1 client/common/client.c prompts. Raw output never leaves
+// Upstream FreeRDP 3.32.1 client/common/client.c prompts. Raw output never leaves
 // this parser; only bounded, validated protocol events do.
 class PromptParser
 {

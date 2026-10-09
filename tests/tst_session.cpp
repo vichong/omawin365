@@ -342,7 +342,7 @@ private slots:
         const int firstErrors = cancelledPending ? 0 : 1;
         QCOMPARE(errors.count(), firstErrors);
         if (firstErrors)
-            QCOMPARE(errors.at(0).at(0).toString(), QStringLiteral("Could not inspect the installed stock FreeRDP executable."));
+            QCOMPARE(errors.at(0).at(0).toString(), QStringLiteral("Could not inspect the installed FreeRDP executable."));
         QCOMPARE(launchErrors.count(), 1);
         const auto launchError = launchErrors.at(0).at(0).value<QProcess::ProcessError>();
         if (cancelledPending && launchError == QProcess::Crashed) {
@@ -391,7 +391,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(ended.count(), 2, 3000);
         QVERIFY(!session.active());
         QCOMPARE(errors.count(), firstErrors + 1);
-        QCOMPARE(errors.last().at(0).toString(), QStringLiteral("Could not inspect the installed stock FreeRDP executable."));
+        QCOMPARE(errors.last().at(0).toString(), QStringLiteral("Could not inspect the installed FreeRDP executable."));
         QCOMPARE(launchErrors.count(), 2);
         QCOMPARE(launchErrors.at(1).at(0).value<QProcess::ProcessError>(), QProcess::FailedToStart);
         QCOMPARE(finished.count(), firstFinished);

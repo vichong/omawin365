@@ -325,7 +325,7 @@ private slots:
         } else {
             QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
             QCOMPARE(fixture.errors.count(), 1);
-            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("Stock FreeRDP 3.32.1 with unambiguous WITH_SSO_MIB=OFF is required; executable verification failed."));
+            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP 3.32.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
         }
         QVERIFY(!fixture.session.active());
         QTest::qWait(100);
@@ -1227,10 +1227,10 @@ private slots:
     {
         QTest::addColumn<QString>("scenario");
         QTest::addColumn<QString>("message");
-        QTest::newRow("version-crash") << QStringLiteral("version-crash") << QStringLiteral("Could not inspect the installed stock FreeRDP executable.");
-        QTest::newRow("version-timeout") << QStringLiteral("version-timeout") << QStringLiteral("Could not verify the installed stock FreeRDP version within five seconds.");
+        QTest::newRow("version-crash") << QStringLiteral("version-crash") << QStringLiteral("Could not inspect the installed FreeRDP executable.");
+        QTest::newRow("version-timeout") << QStringLiteral("version-timeout") << QStringLiteral("Could not verify the installed FreeRDP version within five seconds.");
         QTest::newRow("missing-profile") << QStringLiteral("missing-profile") << QStringLiteral("The imported connection file is unavailable.");
-        QTest::newRow("transport-exec-failure") << QStringLiteral("transport-exec-failure") << QStringLiteral("Stock FreeRDP could not start its controlled terminal or executable.");
+        QTest::newRow("transport-exec-failure") << QStringLiteral("transport-exec-failure") << QStringLiteral("FreeRDP could not start its controlled terminal or executable.");
         QTest::newRow("clean-exit-before-desktop") << QStringLiteral("clean-exit-before-desktop") << QStringLiteral("FreeRDP ended before a connected desktop was observed.");
         QTest::newRow("diagnostic-exit") << QStringLiteral("diagnostic-exit") << QStringLiteral("FreeRDP reported authentication failure.");
     }

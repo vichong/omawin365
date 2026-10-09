@@ -243,7 +243,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
     connect(&state_->versionTimer, &QTimer::timeout, this, [this] {
         if (state_->versionCheck == State::VersionCheck::Checking) {
             state_->versionProcess.kill();
-            fail(QStringLiteral("Could not verify the installed stock FreeRDP version within five seconds."));
+            fail(QStringLiteral("Could not verify the installed FreeRDP version within five seconds."));
         }
     });
     connect(&state_->versionProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
@@ -262,14 +262,14 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
             ? State::VersionCheck::Ending : State::VersionCheck::Idle;
         if (state_->versionCheck == State::VersionCheck::Ending)
             state_->versionProcess.kill();
-        fail(QStringLiteral("Could not inspect the installed stock FreeRDP executable."));
+        fail(QStringLiteral("Could not inspect the installed FreeRDP executable."));
     });
     connect(&state_->versionProcess, &QProcess::readyReadStandardOutput, this, [this] {
         QByteArray bytes = state_->versionProcess.readAllStandardOutput();
         if (state_->versionCheck == State::VersionCheck::Checking) {
             const qsizetype limit = state_->buildProbe ? 32768 : 4096;
             if (state_->probeOutput.size() + bytes.size() >= limit)
-                fail(QStringLiteral("Stock FreeRDP 3.32.1 with unambiguous WITH_SSO_MIB=OFF is required; executable verification failed."));
+                fail(QStringLiteral("FreeRDP 3.32.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
             else state_->probeOutput.append(bytes);
         }
         clearBytes(bytes);
@@ -279,7 +279,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         state_->probeErrorBytes += bytes.size();
         clearBytes(bytes);
         if (state_->versionCheck == State::VersionCheck::Checking && state_->probeErrorBytes >= 32768)
-            fail(QStringLiteral("Stock FreeRDP 3.32.1 with unambiguous WITH_SSO_MIB=OFF is required; executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.32.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
     });
     state_->authTimer.setSingleShot(true);
     connect(&state_->authTimer, &QTimer::timeout, this, [this] {
@@ -316,7 +316,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         }
         clearBytes(version);
         if (!supported) {
-            fail(QStringLiteral("Stock FreeRDP 3.32.1 with unambiguous WITH_SSO_MIB=OFF is required; executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.32.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
             return;
         }
         if (!state_->buildProbe) {
@@ -406,7 +406,7 @@ void Session::start(const QString& profilePath)
     state_->profilePath = profilePath;
     state_->executable = QStandardPaths::findExecutable(QStringLiteral("xfreerdp3"));
     if (state_->executable.isEmpty()) {
-        fail(QStringLiteral("Stock xfreerdp3 is required but was not found."));
+        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the omawin365-freerdp package."));
         return;
     }
     verifyExecutable();
@@ -423,7 +423,7 @@ void Session::verifyExecutable()
     if (state_->versionCheck != State::VersionCheck::Checking)
         return;
     state_->versionTimer.start(5000);
-    emit statusChanged(QStringLiteral("connecting"), QStringLiteral("Checking the installed stock FreeRDP version."));
+    emit statusChanged(QStringLiteral("connecting"), QStringLiteral("Checking the installed FreeRDP version."));
 }
 
 void Session::startTransport(const QString& profilePath)
@@ -436,7 +436,7 @@ void Session::startTransport(const QString& profilePath)
         return;
     }
     if (executable.isEmpty()) {
-        fail(QStringLiteral("Stock xfreerdp3 is required but was not found."));
+        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the omawin365-freerdp package."));
         return;
     }
     // Revalidate every transport launch. Leave old
@@ -592,7 +592,7 @@ void Session::startTransport(const QString& profilePath)
     if (child < 0) {
         close(master);
         close(diagnosticPipe[0]);
-        fail(QStringLiteral("Could not launch stock FreeRDP."));
+        fail(QStringLiteral("Could not launch FreeRDP."));
         return;
     }
     state_->master = master;
@@ -634,7 +634,7 @@ void Session::startTransport(const QString& profilePath)
     if (!ownsTransport(epoch, child, master) || state_->stopping)
         return;
     if (!state_->display)
-        fail(QStringLiteral("An XWayland display is required for the stock FreeRDP desktop."));
+        fail(QStringLiteral("An XWayland display is required for the FreeRDP desktop."));
 }
 
 void Session::releaseTransport()
@@ -1095,7 +1095,7 @@ void Session::checkChild()
         QString message = state_->diagnostic;
         if (message.isEmpty()) {
             if (result > 0 && WIFEXITED(status) && (WEXITSTATUS(status) == 126 || WEXITSTATUS(status) == 127))
-                message = QStringLiteral("Stock FreeRDP could not start its controlled terminal or executable.");
+                message = QStringLiteral("FreeRDP could not start its controlled terminal or executable.");
             else
                 message = wasConnected ? QStringLiteral("The FreeRDP desktop ended unexpectedly.")
                                        : QStringLiteral("FreeRDP ended before a connected desktop was observed.");
