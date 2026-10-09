@@ -29,7 +29,7 @@ Running against a real Cloud PC also needs the private FreeRDP provider: see `pa
 | Sign-in browser control | `src/browserauth.cpp`, `src/portal.js`, `src/oauthcontract.cpp` | Handles OAuth state/PKCE and callbacks, drives a hostile-content browser, accepts one download. |
 | FreeRDP process and prompts | `src/session.cpp`, `src/promptparser.cpp` | Parses untrusted terminal output, sends PINs and sign-in replies, manages process lifetime and signals. |
 | Connection-file validation | `src/rdpprofile.cpp`, `src/profilestore.cpp` | The only barrier between an attacker-supplied `.rdpw` and FreeRDP's settings. |
-| FreeRDP patch | `packaging/freerdp/0003-accept-wildcard-dns-san.patch` | Changes certificate name extraction; upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). |
+| FreeRDP patch | `packaging/freerdp/0003-accept-wildcard-dns-san.patch` | Changes certificate name extraction; merged upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). |
 
 The enforced rules are summarized in [BOUNDARIES.md](BOUNDARIES.md).
 

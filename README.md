@@ -29,7 +29,7 @@ make test   # needs an X11/XWayland DISPLAY; see docs/TESTING.md
 
 The app needs **FreeRDP 3.32.1 built with `WITH_SSO_MIB=OFF`, plus one certificate fix**. Arch's stock `freerdp` (3.31.1) is rejected. The recipe in [`packaging/freerdp`](packaging/freerdp) builds a private copy under `/usr/lib/omawin365/freerdp` without touching the distro package; see [packaging](docs/PACKAGING.md).
 
-**Why the FreeRDP patch:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP builds without uriparser discard wildcard names, so valid gateways look like a name mismatch. OMAWIN365 never accepts a certificate prompt, so every connection stopped. [Patch 0003](packaging/freerdp/0003-accept-wildcard-dns-san.patch) fixes this. It's submitted upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). Once it's merged and Arch ships a fixed FreeRDP, the app's exact-version check and package dependency will move to stock `freerdp`, and the private copy goes away.
+**Why the FreeRDP patch:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP builds without uriparser discard wildcard names, so valid gateways look like a name mismatch. OMAWIN365 never accepts a certificate prompt, so every connection stopped. [Patch 0003](packaging/freerdp/0003-accept-wildcard-dns-san.patch) fixes this. It was merged upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653) but is not yet in a FreeRDP release. Once Arch ships a fixed FreeRDP, the app's exact-version check and package dependency will move to stock `freerdp`, and the private copy goes away.
 
 ## Help review it
 

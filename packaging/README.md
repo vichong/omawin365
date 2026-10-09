@@ -5,7 +5,7 @@ Local Arch packaging for OMAWIN365. See [docs/PACKAGING.md](../docs/PACKAGING.md
 ## `freerdp/`: private FreeRDP provider
 
 - **Source:** FreeRDP commit `bf217a504e54cc719880c228e82353382cd7d4fa` (3.32.1), from a pinned GitHub archive with a fixed SHA-256.
-- **Patch:** `0003-accept-wildcard-dns-san.patch` keeps wildcard certificate names such as `*.wvd.microsoft.com` (upstream: [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)). It's the only source change.
+- **Patch:** `0003-accept-wildcard-dns-san.patch` keeps wildcard certificate names such as `*.wvd.microsoft.com` (merged upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653), not yet in a FreeRDP release). It's the only source change.
 - **Configuration** (`configure.sh`): SSO MIB off, camera client off, X11 and Azure AD sign-in on, private prefix `/usr/lib/omawin365/freerdp`, and git version detection off so the build reports `3.32.1 (n/a)`.
 - **Checks:** `check-contract.py` fails the build if the CMake cache drifts from the 229 feature flags in `accepted-features.txt` or from the version and shared-library settings.
 - **Install layout:** a complete private FreeRDP under `/usr/lib/omawin365/freerdp`, with `bin/xfreerdp3` linking to `xfreerdp`. It doesn't provide, replace or conflict with Arch's `freerdp`, and adds no global links. Upstream's Apache-2.0 licence and the bundled uwac notices are installed.
