@@ -124,8 +124,9 @@ bool supportedValue(const Rule& rule, QStringView value)
     // Identifier limits are app policy, not the entire Azure resource-name grammar.
     static const QRegularExpression arm(QStringLiteral("\\A(?i:/subscriptions/)") + uuid +
         QStringLiteral("(?i:/resourcegroups/)[A-Za-z0-9_-]{1,90}(?i:/providers/Microsoft\\.DesktopVirtualization/hostpools/)[A-Za-z0-9_-]{1,64}\\z"));
-    static const QRegularExpression desktop(QStringLiteral("\\ACloud PC Enterprise ") + positive +
-        QStringLiteral("vCPU/") + positive + QStringLiteral("GB/") + positive + QStringLiteral("GB\\z"));
+    // Display label only. The product name varies by Microsoft SKU; an optional size suffix keeps its grammar.
+    static const QRegularExpression desktop(QStringLiteral("\\A[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}(?: ") + positive +
+        QStringLiteral("vCPU/") + positive + QStringLiteral("GB/") + positive + QStringLiteral("GB)?\\z"));
     // Bounded stored-metadata policy, not a geography enum or trusted endpoint registry.
     static const QString token = QStringLiteral("[A-Za-z][A-Za-z0-9_]{0,31}");
     static const QString authority = QStringLiteral("rdweb-g-[a-z]{2,16}-r[0-9]\\.(?:wvd\\.microsoft\\.com|wvd\\.azure\\.us)");

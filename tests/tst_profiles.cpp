@@ -626,6 +626,9 @@ private slots:
         for (const auto& size : {"1", "9999"})
             row(QByteArray("desktop-all-boundaries-") + size, setting(fullerProfile, "remotedesktopname",
                 QByteArray("Cloud PC Enterprise ") + size + "vCPU/" + size + "GB/" + size + "GB"));
+        for (const auto& label : {"Example Desktop 4vCPU/16GB/256GB", "Example Desktop", "Example Desktop 1.2-a_b"})
+            row(QByteArray("desktop-other-product-") + label, setting(fullerProfile, "remotedesktopname", label));
+        row("desktop-name-boundary", setting(fullerProfile, "remotedesktopname", QByteArray(64, 'a')));
         for (const auto& pair : QList<QPair<QByteArray, QByteArray>>{{"3", "1"}, {"0", "9999"}, {"9", "9999"}}) {
             QByteArray bytes = fullerProfile;
             bytes.replace("Ring\"%3a3", "Ring\"%3a" + pair.first);
@@ -1310,8 +1313,10 @@ private slots:
                     "Cloud PC Enterprise " + sizes[0] + "vCPU/" + sizes[1] + "GB/" + sizes[2] + "GB"));
             }
         }
-        for (const auto& label : {"Cloud PC Enterprise", "Cloud PC Enterprise 2VCPU/8GB/128GB", "Cloud PC Enterprise 2vCPU/8Gb/128GB", "Cloud PC Enterprise 2vCPU/8GB/128GB/1", "Cloud PC Enterprise 2vCPU /8GB/128GB", "Other Enterprise 2vCPU/8GB/128GB", "Cloud PC Enterprise fixture-secret-marker"})
+        for (const auto& label : {"Cloud PC Enterprise 2VCPU/8GB/128GB", "Cloud PC Enterprise 2vCPU/8Gb/128GB", "Cloud PC Enterprise 2vCPU/8GB/128GB/1", "Cloud PC Enterprise 2vCPU /8GB/128GB"})
             row(QByteArray("desktop-syntax-") + label, setting(fullerProfile, "remotedesktopname", label));
+        for (const auto& label : {"", " Example", "Example\"x", "Example:x", QByteArray(65, 'a').constData()})
+            row(QByteArray("desktop-name-rejected-") + label, setting(fullerProfile, "remotedesktopname", label));
         const QByteArray activityKey = "activityhint:s:";
         const auto activityStart = fullerProfile.indexOf(activityKey) + activityKey.size();
         const auto activity = fullerProfile.mid(activityStart, fullerProfile.indexOf("\r\n", activityStart) - activityStart);
