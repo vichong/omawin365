@@ -4,7 +4,7 @@ Status as of October 2026. "Verified" means observed or tested as described, not
 
 ## Automated tests
 
-`make test` runs six suites (profiles, prompt parser, window, two session suites, browser automation): about 4,100 QtTest checks and 215 browser-automation assertions, all passing. They use synthetic connection files, a fake FreeRDP and synthetic Chromium; no Microsoft account, real profile or security key is involved. All six also pass under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection.
+`make test` runs seven suites (profiles, prompt parser, window, two session suites, browser automation and sign-in cache). They use synthetic connection files, a fake FreeRDP, synthetic Chromium and an in-memory Secret Service adapter; no Microsoft account, real profile, personal keyring or security key is involved. The original six-suite baseline also passed under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection. Those sanitizer and static-analysis results predate the remembered-sign-in change; its checks are recorded below.
 
 ## Static and dynamic analysis
 
@@ -36,3 +36,13 @@ On the maintainer's Windows 365 Enterprise tenant, with a hardware security key:
 - cancelling during sign-in, and unplugging the key during sign-in.
 
 Not yet checked: other tenants, Frontline and other editions, multi-monitor.
+
+## Remembered sign-in (October 2026)
+
+- **Automated:** the sign-in cache suite and the BrowserAuth and Window checks described in [TESTING](TESTING.md), with an in-memory keyring stand-in.
+- **Smoke checks by the contributor, with invented cookies only:** a real private Secret Service saved, reloaded and deleted an item; real Chromium restored and exported a Microsoft-domain cookie with its expiry, Secure, HttpOnly and SameSite attributes intact.
+- **Live, by the contributor on their tenant:** sign in, disconnect, then reconnect without quitting reused the sign-in. This was before the three-way setting; that behaviour is now **Until the app closes**, which **On this device** also includes.
+
+- **Live, by the maintainer on their tenant (October 16):** with **On this device**, sign-in was reused after quitting and reopening the app; **Until the app closes** reused it on Reconnect and asked again after a restart; **Forget sign-in** turned remembering off and the next connection asked to sign in.
+
+Not yet checked: Conditional Access differences, federated sign-in, and keyring providers other than the maintainer's.

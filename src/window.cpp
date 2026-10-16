@@ -38,6 +38,36 @@
 using namespace WindowPresentation;
 
 namespace {
+using RememberSignIn = BrowserAuth::RememberSignIn;
+
+// Saved as words so an unknown or older value falls back to Off.
+RememberSignIn rememberModeFromSetting(const QVariant& value)
+{
+    const QString name = value.toString();
+    if (name == QStringLiteral("app")) return RememberSignIn::AppSession;
+    if (name == QStringLiteral("device")) return RememberSignIn::Device;
+    return RememberSignIn::Off;
+}
+
+QString rememberSetting(RememberSignIn mode)
+{
+    return mode == RememberSignIn::AppSession ? QStringLiteral("app")
+        : mode == RememberSignIn::Device ? QStringLiteral("device") : QStringLiteral("off");
+}
+
+QString rememberNote(RememberSignIn mode)
+{
+    switch (mode) {
+    case RememberSignIn::AppSession:
+        return QStringLiteral("Kept in memory until OMAWIN365 closes. Microsoft may still ask for your security key.");
+    case RememberSignIn::Device:
+        return QStringLiteral("Saved in your system keyring when Microsoft allows it. Microsoft may still ask for your security key.");
+    case RememberSignIn::Off:
+        break;
+    }
+    return QStringLiteral("Nothing is kept after OMAWIN365 closes.");
+}
+
 class PinValidator final : public QValidator {
 public:
     explicit PinValidator(QObject* parent) : QValidator(parent) {}
@@ -156,6 +186,30 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     scaleRow->addWidget(scaleLabel, 1, Qt::AlignVCenter);
     scaleRow->addWidget(m_scale);
     m_contentLayout->addLayout(scaleRow);
+    // App-wide. It changes how the sign-in browser starts, so it waits while connected.
+    auto* signInRow = new QHBoxLayout;
+    auto* signInLabel = label(QStringLiteral("Remem&ber sign-in"), content);
+    m_rememberSignIn = new QComboBox(content);
+    m_rememberSignIn->setObjectName(QStringLiteral("rememberSignIn"));
+    m_rememberSignIn->setAccessibleName(QStringLiteral("Remember Microsoft sign-in"));
+    m_rememberSignIn->setToolTip(QStringLiteral("Off: nothing is kept after the app closes. Until the app closes: kept in memory. On this device: also saved in your system keyring."));
+    m_rememberSignIn->addItem(QStringLiteral("Off"), int(BrowserAuth::RememberSignIn::Off));
+    m_rememberSignIn->addItem(QStringLiteral("Until the app closes"), int(BrowserAuth::RememberSignIn::AppSession));
+    m_rememberSignIn->addItem(QStringLiteral("On this device (keyring)"), int(BrowserAuth::RememberSignIn::Device));
+    // Shares the row with its label; narrow windows elide the choice instead of scrolling sideways.
+    m_rememberSignIn->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_rememberSignIn->setMinimumContentsLength(4);
+    signInLabel->setBuddy(m_rememberSignIn);
+    signInRow->addWidget(signInLabel, 1, Qt::AlignVCenter);
+    signInRow->addWidget(m_rememberSignIn, 1);
+    m_contentLayout->addLayout(signInRow);
+    m_signInCacheNote = label({}, content, "muted");
+    m_signInCacheNote->setObjectName(QStringLiteral("signInCacheNote"));
+    m_contentLayout->addWidget(m_signInCacheNote);
+    m_forgetSignIn = new QPushButton(QStringLiteral("&Forget sign-in"), content);
+    m_forgetSignIn->setObjectName(QStringLiteral("forgetSignIn"));
+    m_forgetSignIn->setToolTip(QStringLiteral("Remove remembered Microsoft sign-in from memory and the system keyring, and turn remembering off."));
+    m_contentLayout->addWidget(m_forgetSignIn, 0, Qt::AlignRight);
     m_audioPlayback = new QCheckBox(QStringLiteral("Play remote &audio"), content);
     m_audioPlayback->setObjectName(QStringLiteral("audioPlayback"));
     m_audioPlayback->setToolTip(QStringLiteral("Play Windows sound through your default local speakers or headphones."));
@@ -186,6 +240,45 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
         QSettings().setValue(QStringLiteral("remoteDesktop/scale"), DisplayScale::normalizeChoice(m_scale->currentData()));
         refreshAutoScale();
         updatePendingOptions();
+    });
+    m_rememberMode = rememberModeFromSetting(QSettings().value(QStringLiteral("rememberSignIn")));
+    m_rememberSignIn->setCurrentIndex(m_rememberSignIn->findData(int(m_rememberMode)));
+    m_browser->setRememberSignIn(m_rememberMode);
+    // Set until the keyring confirms a deletion, so a failed one is still offered after a restart.
+    m_forgetFailed = QSettings().value(QStringLiteral("rememberSignInDeletePending"), false).toBool();
+    m_signInCacheNote->setText(m_forgetFailed
+        ? QStringLiteral("A saved sign-in may still be in the system keyring. Choose Forget sign-in to remove it.")
+        : rememberNote(m_rememberMode));
+    connect(m_rememberSignIn, &QComboBox::currentIndexChanged, this, [this] {
+        const auto previous = m_rememberMode;
+        m_rememberMode = BrowserAuth::RememberSignIn(m_rememberSignIn->currentData().toInt());
+        if (m_rememberMode == BrowserAuth::RememberSignIn::Off) { forgetSignIn(); return; }
+        QSettings().setValue(QStringLiteral("rememberSignIn"), rememberSetting(m_rememberMode));
+        m_browser->setRememberSignIn(m_rememberMode);
+        if (previous != BrowserAuth::RememberSignIn::Device) {
+            m_signInCacheNote->setText(rememberNote(m_rememberMode));
+            updateControls();
+            return;
+        }
+        // Leaving the keyring setting deletes what it saved; memory stays.
+        m_forgettingSignIn = true;
+        m_signInCacheNote->setText(QStringLiteral("Removing sign-in from the system keyring…"));
+        QSettings().setValue(QStringLiteral("rememberSignInDeletePending"), true);
+        updateControls();
+        m_browser->forgetSavedSignIn();
+    });
+    connect(m_forgetSignIn, &QPushButton::clicked, this, &Window::forgetSignIn);
+    connect(m_browser, &BrowserAuth::signInCacheNotice, m_signInCacheNote, &QLabel::setText);
+    connect(m_browser, &BrowserAuth::signInForgotten, this, [this](bool ok) {
+        m_forgettingSignIn = false;
+        m_forgetFailed = !ok;
+        if (ok) QSettings().remove(QStringLiteral("rememberSignInDeletePending"));
+        m_signInCacheNote->setText(!ok
+            ? QStringLiteral("The system keyring could not remove the saved sign-in. Unlock your keyring and choose Forget sign-in again.")
+            : m_rememberMode == BrowserAuth::RememberSignIn::Off
+                ? QStringLiteral("Remembered sign-in removed. Your next connection asks you to sign in.")
+                : QStringLiteral("Removed from the system keyring. ") + rememberNote(m_rememberMode));
+        updateControls();
     });
 
     m_connect = new WrappedButton(QStringLiteral("&Connect"), content);
@@ -842,7 +935,7 @@ void Window::updateControls()
     for (auto* option : {m_audioPlayback, m_audioCapture, m_clipboard})
         option->setEnabled(devicesEditable);
     m_devicesNote->setText(selected
-        ? QStringLiteral("Audio, microphone and clipboard are saved for this Cloud PC. Display scale applies to all.")
+        ? QStringLiteral("Audio, microphone and clipboard are saved for this Cloud PC. Display scale and sign-in apply to all.")
         : QStringLiteral("Select a Cloud PC to change its audio, microphone and clipboard."));
     m_connect->setEnabled(selected && !active && !m_acquisition.active && !m_closePending && m_restartPath.isEmpty());
     m_connect->setVisible(!active);
@@ -862,6 +955,11 @@ void Window::updateControls()
     markConnectedProfile();
     m_import->setEnabled(!active && !m_acquisition.active && !m_closePending);
     m_acquire->setEnabled(!active && !m_acquisition.active && !m_closePending);
+    const bool canChangeSignIn = !active && !m_acquisition.active && !m_closePending && !m_forgettingSignIn;
+    m_rememberSignIn->setEnabled(canChangeSignIn);
+    m_forgetSignIn->setEnabled(canChangeSignIn);
+    // Off has nothing to forget, unless removing it from the keyring failed.
+    m_forgetSignIn->setVisible(m_rememberMode != BrowserAuth::RememberSignIn::Off || m_forgetFailed);
     updatePendingOptions();
 }
 
@@ -879,6 +977,21 @@ void Window::refreshAutoScale()
     if (DisplayScale::normalizeChoice(m_scale->currentData()) != DisplayScale::Auto) return;
     m_autoScale = DisplayScale::resolveAuto(this);
     m_scale->setItemText(0, QStringLiteral("Auto (%1%)").arg(m_autoScale));
+}
+
+void Window::forgetSignIn()
+{
+    m_forgettingSignIn = true;
+    m_rememberMode = BrowserAuth::RememberSignIn::Off;
+    QSettings().setValue(QStringLiteral("rememberSignIn"), rememberSetting(m_rememberMode));
+    {
+        QSignalBlocker blocked(m_rememberSignIn);
+        m_rememberSignIn->setCurrentIndex(m_rememberSignIn->findData(int(m_rememberMode)));
+    }
+    m_signInCacheNote->setText(QStringLiteral("Removing remembered sign-in…"));
+    QSettings().setValue(QStringLiteral("rememberSignInDeletePending"), true);
+    updateControls();
+    m_browser->forgetSignIn();
 }
 
 void Window::updatePendingOptions()
@@ -1117,6 +1230,10 @@ void Window::showError(const QString& title, const QString& message)
 
 void Window::closeEvent(QCloseEvent* event)
 {
+    if (m_forgettingSignIn) {
+        event->ignore(); // Do not cancel a deletion and claim the sign-in was forgotten.
+        return;
+    }
     if (!m_session->active()) {
         clearAcquisition();
         m_browser->cancel();

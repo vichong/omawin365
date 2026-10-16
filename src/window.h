@@ -1,5 +1,6 @@
 #pragma once
 
+#include "browserauth.h"
 #include "session.h"
 
 #include <QPointer>
@@ -57,6 +58,7 @@ private:
     LaunchOptions launchOptions(const QString& path) const;
     void refreshAutoScale();
     void updatePendingOptions();
+    void forgetSignIn();
     QString selectedId() const;
     QString selectedPath() const;
     DeviceOptions devicesForPath(const QString& path) const;
@@ -80,6 +82,12 @@ private:
     QPushButton* m_connect;
     QPushButton* m_disconnect;
     QPushButton* m_reconnect;
+    QComboBox* m_rememberSignIn;
+    BrowserAuth::RememberSignIn m_rememberMode = BrowserAuth::RememberSignIn::Off;
+    QPushButton* m_forgetSignIn;
+    QLabel* m_signInCacheNote;
+    bool m_forgettingSignIn = false;
+    bool m_forgetFailed = false;
     QComboBox* m_scale;
     QCheckBox* m_clipboard;
     QLabel* m_optionsPending;

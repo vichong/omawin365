@@ -17,3 +17,8 @@ HEADERS += ../src/oauthcontract.h
 HEADERS += ../src/browserauth.h auth_composed.h
 
 HEADERS += certificate_fixture.h
+
+CONFIG += link_pkgconfig
+PKGCONFIG += libsecret-1
+SOURCES += ../src/signincache.cpp
+HEADERS += ../src/signincache.h

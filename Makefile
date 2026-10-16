@@ -13,6 +13,8 @@ install: all
 
 # Test targets are independent of the application and never use real profiles.
 test: test-session test-session-public test-window
+	mkdir -p .build-tests/signincache
+	cd .build-tests/signincache && $(QMAKE) ../../tests/signincache.pro && $(MAKE) && ./tst_signincache
 	mkdir -p .build-tests/profiles
 	cd .build-tests/profiles && $(QMAKE) ../../tests/profiles.pro && $(MAKE) && ./tst_profiles
 	mkdir -p .build-tests/browser

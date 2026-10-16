@@ -1,0 +1,9 @@
+QT += core testlib
+QT -= gui
+CONFIG += console c++20 testcase link_pkgconfig
+CONFIG -= app_bundle
+PKGCONFIG += libsecret-1
+TEMPLATE = app
+TARGET = tst_signincache
+SOURCES += tst_signincache.cpp
+HEADERS += ../src/signincache.h

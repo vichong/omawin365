@@ -12,7 +12,6 @@
 #include "displayscale.h"
 
 #include <QApplication>
-#include <QCheckBox>
 #include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
@@ -330,6 +329,95 @@ private slots:
         QCOMPARE(controls.starts.size(), 0);
     }
 
+    void rememberSignInChoices()
+    {
+        openWindow();
+        auto* remember = window->findChild<QComboBox*>("rememberSignIn");
+        auto* forget = window->findChild<QPushButton*>("forgetSignIn");
+        auto* note = window->findChild<QLabel*>("signInCacheNote");
+        QVERIFY(remember && forget && note);
+        QCOMPARE(remember->currentText(), "Off"); // Off is the default.
+        QCOMPARE(controls.rememberSignIn, 0);
+        QVERIFY(forget->isHidden()); // Nothing to forget.
+        remember->setCurrentIndex(1);
+        QCOMPARE(controls.rememberSignIn, 1);
+        QCOMPARE(QSettings().value("rememberSignIn").toString(), "app");
+        QVERIFY(!forget->isHidden());
+        QVERIFY(note->text().contains("until OMAWIN365 closes"));
+        QCOMPARE(controls.forgets + controls.savedForgets, 0);
+        remember->setCurrentIndex(2);
+        QCOMPARE(controls.rememberSignIn, 2);
+        QCOMPARE(QSettings().value("rememberSignIn").toString(), "device");
+        // Leaving the keyring setting deletes the saved item but keeps memory.
+        remember->setCurrentIndex(1);
+        QCOMPARE(controls.savedForgets, 1);
+        QCOMPARE(controls.rememberSignIn, 1);
+        QVERIFY(!remember->isEnabled() && !forget->isEnabled());
+        QVERIFY(!window->close()); // An unfinished deletion must not be abandoned.
+        emit browser->signInForgotten(true);
+        QVERIFY(remember->isEnabled());
+        QVERIFY(note->text().contains("Removed from the system keyring") && note->text().contains("until OMAWIN365 closes"));
+        // Off forgets everything.
+        remember->setCurrentIndex(0);
+        QCOMPARE(controls.forgets, 1);
+        QCOMPARE(controls.rememberSignIn, 0);
+        emit browser->signInForgotten(false);
+        QVERIFY(note->text().contains("could not remove"));
+        QVERIFY(!forget->isHidden() && forget->isEnabled()); // So the user can try again.
+        forget->click();
+        QCOMPARE(controls.forgets, 2);
+        emit browser->signInForgotten(true);
+        QVERIFY(note->text().contains("removed"));
+        QVERIFY(forget->isHidden());
+        QCOMPARE(QSettings().value("rememberSignIn").toString(), "off");
+        // Forget from a remembering setting turns it off too.
+        remember->setCurrentIndex(2);
+        forget->click();
+        QCOMPARE(controls.forgets, 3);
+        QCOMPARE(remember->currentText(), "Off");
+        QCOMPARE(controls.rememberSignIn, 0);
+        emit browser->signInForgotten(true);
+    }
+    void failedForgetOfferedAfterRestart()
+    {
+        openWindow();
+        window->findChild<QComboBox*>("rememberSignIn")->setCurrentIndex(2);
+        window->findChild<QPushButton*>("forgetSignIn")->click();
+        emit browser->signInForgotten(false);
+        window.reset();
+        openWindow(); // Off is restored, but the keyring item may still be there.
+        auto* forget = window->findChild<QPushButton*>("forgetSignIn");
+        QCOMPARE(window->findChild<QComboBox*>("rememberSignIn")->currentText(), "Off");
+        QVERIFY(!forget->isHidden() && forget->isEnabled());
+        QVERIFY(window->findChild<QLabel*>("signInCacheNote")->text().contains("may still be in the system keyring"));
+        forget->click();
+        emit browser->signInForgotten(true);
+        QVERIFY(forget->isHidden());
+        window.reset();
+        openWindow();
+        QVERIFY(window->findChild<QPushButton*>("forgetSignIn")->isHidden());
+    }
+    void rememberSignInRestoredOnReopen()
+    {
+        QSettings().setValue("rememberSignIn", "device");
+        openWindow();
+        QCOMPARE(window->findChild<QComboBox*>("rememberSignIn")->currentIndex(), 2);
+        QCOMPARE(controls.rememberSignIn, 2);
+        window.reset();
+        QSettings().setValue("rememberSignIn", true); // An earlier draft's value means Off.
+        openWindow();
+        QCOMPARE(window->findChild<QComboBox*>("rememberSignIn")->currentIndex(), 0);
+        QCOMPARE(controls.rememberSignIn, 0);
+    }
+    void signInControlsDisabledDuringConnection()
+    {
+        seed(); openWindow();
+        QVERIFY(click(window.get(), "Connect"));
+        QVERIFY(!window->findChild<QComboBox*>("rememberSignIn")->isEnabled());
+        QVERIFY(!window->findChild<QPushButton*>("forgetSignIn")->isEnabled());
+        finish();
+        QVERIFY(window->findChild<QComboBox*>("rememberSignIn")->isEnabled());
+    }
     void acquisitionInitialFocusAndAutomaticScroll_data()
     {
         QTest::addColumn<QSize>("bounds");

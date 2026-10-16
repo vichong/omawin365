@@ -12,6 +12,9 @@
 namespace WindowFixture {
 struct Controls {
     bool active = false;
+    int rememberSignIn = 0; // BrowserAuth::RememberSignIn
+    int forgets = 0;
+    int savedForgets = 0;
     QStringList starts;
     QList<LaunchOptions> options;
     int stops = 0;

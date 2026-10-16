@@ -101,7 +101,7 @@ QString fixtureParent(bool memoryBacked)
 {
     const QStringList candidates = memoryBacked
         ? QStringList{QStringLiteral("/tmp"), QStringLiteral("/dev/shm")}
-        : QStringList{QStringLiteral(BROWSER_TEST_SOURCE_DIR), QStringLiteral("/var/tmp")};
+        : QStringList{QStringLiteral(BROWSER_TEST_SOURCE_DIR), QStringLiteral("/var/tmp"), QDir::homePath()};
     for (const QString& path : candidates) {
         long type = 0;
         if (directoryFilesystem(path, &type)

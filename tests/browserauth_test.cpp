@@ -3,6 +3,7 @@
 #include "../src/browserauth.cpp"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QUrlQuery>
 #include <cstdio>
 #include <sys/syscall.h>
@@ -17,6 +18,8 @@ extern "C" int kill(pid_t pid, int signal) noexcept
         ++unreservedGroupSignals;
     return int(syscall(SYS_kill, pid, signal));
 }
+
+namespace { QUrl syntheticAuthorization(const QString& state); }
 
 struct BrowserAuthTestAccess {
     static void useSyntheticBrowser(BrowserAuth& browser, const QString& scenario, const QString& trace)
@@ -42,6 +45,242 @@ struct BrowserAuthTestAccess {
     {
         std::optional<QString> state;
         return BrowserAuth::validateAuthorization(url, &state) && state && *state == expected;
+    }
+
+    static void signInCache(const std::function<void(bool, const char*)>& check)
+    {
+        // Any keyring call made here must fail rather than touch the developer's keyring.
+        const QByteArray bus = qgetenv("DBUS_SESSION_BUS_ADDRESS");
+        qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-omawin365-fixture");
+        using Mode = BrowserAuth::RememberSignIn;
+        const auto prepare = [](BrowserAuth& browser, Mode mode = Mode::Device) {
+            auto& state = *browser.d;
+            state.writeFd = ::open("/dev/null", O_WRONLY | O_CLOEXEC);
+            state.active = true;
+            state.rememberSignIn = mode;
+        };
+        const double now = QDateTime::currentSecsSinceEpoch();
+        const QJsonObject persistentCookie{{"name", "ESTSAUTHPERSISTENT"}, {"value", "fictional"},
+            {"domain", ".login.microsoftonline.com"}, {"path", "/"},
+            {"secure", true}, {"httpOnly", true}, {"expires", now + 3600}};
+        const QJsonObject sessionCookie{{"name", "ESTSAUTH"}, {"value", "fictional"},
+            {"domain", ".login.microsoftonline.com"}, {"path", "/"},
+            {"secure", true}, {"httpOnly", true}, {"session", true}};
+        for (const bool callbackSeen : {true, false}) {
+            for (const QString error : {QStringLiteral("net::ERR_ABORTED"), QStringLiteral("net::ERR_NAME_NOT_RESOLVED")}) {
+                BrowserAuth browser;
+                prepare(browser);
+                auto& state = *browser.d;
+                const auto authorization = syntheticAuthorization(QString(64, 'a'));
+                state.auth = {authorization, OAuthContract::request(authorization)};
+                state.auth.contract->generation = 17;
+                state.target = "owned-target";
+                state.pages.insert(state.target, {state.round, "owned-session", "owned-frame", {}, false});
+                int callbacks = 0, failures = 0;
+                QObject::connect(&browser, &BrowserAuth::callbackReady, [&](const OAuthContract::Callback& result) {
+                    ++callbacks;
+                    check(result.generation == 17, "cookie snapshot preserves the callback generation");
+                });
+                QObject::connect(&browser, &BrowserAuth::failed, [&] { ++failures; });
+                const int resume = state.nextId;
+                state.resumePage(state.target, "owned-session");
+                const int navigation = state.nextId;
+                state.handleMessage({{"id", resume}, {"result", QJsonObject{}}});
+                int snapshot = -1;
+                if (callbackSeen) {
+                    state.handleMessage({{"method", "Fetch.requestPaused"}, {"sessionId", "owned-session"},
+                        {"params", QJsonObject{{"requestId", "callback-request"}, {"resourceType", "Document"},
+                            {"frameId", "owned-frame"}, {"request", QJsonObject{{"method", "GET"},
+                                {"url", "https://login.microsoftonline.com/common/oauth2/nativeclient?code=fictional-code&state=" + QString(64, 'a')}}}}}});
+                    for (auto it = state.pending.cbegin(); it != state.pending.cend(); ++it)
+                        if (it->method == "Storage.getCookies") snapshot = it.key();
+                    check(snapshot >= 0 && state.finishingAuth && callbacks == 0,
+                          "validated callback waits for the optional cookie snapshot");
+                }
+                // Chromium acknowledges the initial navigation after the Fetch abort,
+                // while the asynchronous cookie read still keeps this round active.
+                state.handleMessage({{"id", navigation}, {"result", QJsonObject{{"errorText", error}}}});
+                if (callbackSeen && error == "net::ERR_ABORTED") {
+                    state.handleMessage({{"id", snapshot}, {"error", QJsonObject{{"code", -1}}}});
+                    check(callbacks == 1 && failures == 0 && !state.active,
+                          "our callback interception abort is not a network failure while snapshotting cookies");
+                } else {
+                    check(callbacks == 0 && failures == 1 && !state.active,
+                          "real navigation failures and aborts without a validated callback still stop sign-in");
+                }
+            }
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser);
+            auto& state = *browser.d;
+            int completed = 0;
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            check(completed == 0 && state.pending.value(id).method == "Storage.getCookies",
+                  "snapshot waits for the browser cookie response");
+            state.handleMessage({{"id", id}, {"error", QJsonObject{{"code", -1}}}});
+            check(completed == 1 && state.active,
+                  "optional cookie-export failure still completes authentication");
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser);
+            auto& state = *browser.d;
+            int completed = 0;
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            browser.cancel();
+            state.handleMessage({{"id", id}, {"result", QJsonObject{{"cookies", QJsonArray{}}}}});
+            check(completed == 0 && !state.active,
+                  "cancellation retires an in-flight cookie snapshot without publishing authentication");
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser);
+            auto& state = *browser.d;
+            int completed = 0;
+            QObject::connect(&browser, &BrowserAuth::signInCacheNotice, [&] { browser.cancel(); });
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            state.handleMessage({{"id", id}, {"error", QJsonObject{{"code", -1}}}});
+            check(completed == 0 && !state.active,
+                  "reentrant cancellation from cache notice cannot publish a stale callback");
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser);
+            auto& state = *browser.d;
+            state.restoreCookies = {QJsonObject{{"name", "fictional"}}};
+            const int id = state.nextId;
+            state.prepareFlow();
+            check(state.pending.value(id).method == "Storage.setCookies" && state.restoreCookies.isEmpty(),
+                  "remembered cookies are restored once before preparing any sign-in page");
+            state.handleMessage({{"id", id}, {"result", QJsonObject{}}});
+            check(state.pending.value(id + 1).method == "Browser.setDownloadBehavior",
+                  "sign-in preparation resumes after cookie restoration acknowledgement");
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser);
+            auto& state = *browser.d;
+            int completed = 0;
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            state.pending[id].deadline = -1;
+            QMetaObject::invokeMethod(&state.watchdog, "timeout", Qt::DirectConnection);
+            check(completed == 1 && state.active && !state.pending.contains(id),
+                  "cookie-export timeout falls back without failing authentication");
+        }
+        {
+            BrowserAuth browser;
+            auto& state = *browser.d;
+            browser.setRememberSignIn(Mode::Device);
+            state.loadingCache = true;
+            browser.cancel();
+            emit state.cache.loaded(SignInCookies::encode({persistentCookie}, now), true);
+            check(!state.loadingCache && !state.active && state.process.state() == QProcess::NotRunning,
+                  "keyring load completing after cancellation cannot start a browser");
+            state.loadingCache = true;
+            browser.setRememberSignIn(Mode::Off);
+            check(!state.loadingCache && state.restoreCookies.isEmpty(),
+                  "disabling persistence retires a load that Forget may drop from the queue");
+        }
+        {
+            const QByteArray runtime = qgetenv("XDG_RUNTIME_DIR");
+            qputenv("XDG_RUNTIME_DIR", "/nonexistent-omawin365-fixture");
+            BrowserAuth browser;
+            auto& state = *browser.d;
+            state.active = true;
+            state.rememberSignIn = Mode::Device;
+            state.startBrowser();
+            check(!state.loadingCache && !state.active,
+                  "unsafe runtime storage is rejected before accessing remembered credentials");
+            if (runtime.isNull()) qunsetenv("XDG_RUNTIME_DIR");
+            else qputenv("XDG_RUNTIME_DIR", runtime);
+        }
+        {
+            BrowserAuth browser;
+            auto& state = *browser.d;
+            state.writeFd = ::open("/dev/null", O_WRONLY | O_CLOEXEC);
+            state.active = true;
+            int completed = 0;
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            check(completed == 1 && state.nextId == id,
+                  "default private mode never exports cookies or accesses the keyring");
+        }
+        // Counts real keyring jobs. D-Bus is unreachable here, so each one fails fast but still reports.
+        const auto keyringCalls = [](BrowserAuth::Private& state) {
+            int calls = 0;
+            const auto count = [&calls] { ++calls; };
+            const auto a = QObject::connect(&state.cache, &SignInCache::loaded, count);
+            const auto b = QObject::connect(&state.cache, &SignInCache::saved, count);
+            QElapsedTimer waited;
+            waited.start();
+            while (waited.elapsed() < 1000 && !calls) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            QObject::disconnect(a);
+            QObject::disconnect(b);
+            return calls;
+        };
+        for (const Mode mode : {Mode::AppSession, Mode::Device}) {
+            const bool device = mode == Mode::Device;
+            BrowserAuth browser;
+            prepare(browser, mode);
+            auto& state = *browser.d;
+            QString notice;
+            QObject::connect(&browser, &BrowserAuth::signInCacheNotice, [&](const QString& text) { notice = text; });
+            int completed = 0;
+            const int id = state.nextId;
+            state.snapshotSignIn([&] { ++completed; });
+            state.handleMessage({{"id", id}, {"result", QJsonObject{{"cookies", QJsonArray{persistentCookie, sessionCookie}}}}});
+            check(completed == 1 && state.liveSignInCookies.size() == 2 && state.restoreCookies.size() == 2,
+                  "both remembering choices keep session and persistent sign-in cookies in memory");
+            check(keyringCalls(state) == (device ? 1 : 0),
+                  device ? "on-this-device saves to the keyring" : "until-app-closes never saves to the keyring");
+            if (!device)
+                check(notice.contains("until you close OMAWIN365"), "until-app-closes says how long sign-in is kept");
+            if (device) {
+                // Starting without memory waits on a keyring load. Until-app-closes would
+                // launch Chromium here instead, so only the keyring choice is driven.
+                state.liveSignInCookies = {};
+                state.active = true;
+                state.startBrowser();
+                state.active = false; // The finished load must not launch anything.
+                check(state.loadingCache && keyringCalls(state) == 1, "on-this-device loads from the keyring");
+            }
+        }
+        {
+            BrowserAuth browser;
+            prepare(browser, Mode::Device);
+            auto& state = *browser.d;
+            state.liveSignInCookies = {sessionCookie};
+            state.restoreCookies = {persistentCookie, sessionCookie}; // As if loaded from the keyring.
+            browser.setRememberSignIn(Mode::AppSession);
+            check(state.restoreCookies == QJsonArray{sessionCookie} && state.liveSignInCookies.size() == 1,
+                  "leaving the keyring setting keeps this app session's sign-in but not keyring-loaded cookies");
+            browser.setRememberSignIn(Mode::Off);
+            check(state.restoreCookies.isEmpty() && state.liveSignInCookies.isEmpty(),
+                  "turning remembering off drops sign-in held in memory");
+        }
+        {
+            BrowserAuth browser;
+            browser.setRememberSignIn(Mode::Device);
+            auto& state = *browser.d;
+            state.loadingCache = true;
+            int notices = 0;
+            QString notice;
+            QObject::connect(&browser, &BrowserAuth::signInCacheNotice, [&](const QString& text) { notice = text; ++notices; });
+            emit state.cache.loaded(SignInCookies::encode({persistentCookie}, now), true);
+            check(!state.loadingCache && state.restoreCookies.size() == 1 && notice.contains("Restoring"),
+                  "a keyring load supplies saved sign-in to restore");
+            browser.setRememberSignIn(Mode::AppSession);
+            emit state.cache.loaded(SignInCookies::encode({persistentCookie}, now), true);
+            check(state.restoreCookies.isEmpty() && notices == 1,
+                  "a keyring load finishing after leaving the keyring setting is ignored");
+        }
+        if (bus.isNull()) qunsetenv("DBUS_SESSION_BUS_ADDRESS");
+        else qputenv("DBUS_SESSION_BUS_ADDRESS", bus);
     }
 
     static void acquisition(const std::function<void(bool, const char*)>& check)
@@ -138,6 +377,7 @@ struct BrowserAuthTestAccess {
     {
         struct Capture {
             int reader = -1;
+            BrowserAuth::Private* transport = nullptr;
             QByteArray bytes;
             QList<QJsonObject> frames;
             bool valid = true;
@@ -146,8 +386,13 @@ struct BrowserAuthTestAccess {
             {
                 char buffer[4096];
                 ssize_t count;
-                while ((count = ::read(reader, buffer, sizeof(buffer))) > 0)
-                    bytes.append(buffer, count);
+                do {
+                    // Match the production nonblocking transport, and drain queued
+                    // frames even when the kernel gives the fixture a small pipe.
+                    if (transport) transport->flushWrites();
+                    while ((count = ::read(reader, buffer, sizeof(buffer))) > 0)
+                        bytes.append(buffer, count);
+                } while (transport && !transport->output.isEmpty());
                 qsizetype delimiter;
                 while ((delimiter = bytes.indexOf('\0')) >= 0) {
                     QJsonParseError error;
@@ -190,8 +435,10 @@ struct BrowserAuthTestAccess {
             const bool started = state.process.waitForStarted(3000);
             closeFd(state.anchorRead);
             const bool piped = started && privatePipe(&capture.reader, &state.writeFd)
-                && nonblocking(capture.reader);
-            check(piped, "isolated lifecycle transport started");
+                && nonblocking(capture.reader) && nonblocking(state.writeFd)
+                && ::fcntl(state.writeFd, F_SETPIPE_SZ, 4096) > 0;
+            capture.transport = &state;
+            check(piped, "isolated lifecycle transport started with a small nonblocking pipe");
             if (!piped) return false;
             state.mode = BrowserAuth::Private::Mode::Authentication;
             state.active = true;
@@ -368,6 +615,11 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "FAIL: %s\n", name);
         }
     };
+    if (application.arguments().contains(QStringLiteral("--cache-only"))) {
+        BrowserAuthTestAccess::signInCache(check);
+        std::printf("Browser cache assertions: %d; failures: %d.\n", assertions, failures);
+        return failures ? 1 : 0;
+    }
     QUrl request(QStringLiteral("https://login.microsoftonline.com/common/oauth2/v2.0/authorize"));
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("client_id"), QStringLiteral("a85cf173-4192-42f8-81fa-777a763e6e2c"));
@@ -461,6 +713,7 @@ int main(int argc, char** argv)
           "callback fragment rejected");
     check(!BrowserAuthTestAccess::code(QUrl(endpoint + QStringLiteral("?code=") + QString(65536, QLatin1Char('x')))),
           "oversized callback rejected");
+    BrowserAuthTestAccess::signInCache(check);
     BrowserAuthTestAccess::acquisition(check);
     BrowserAuthTestAccess::handoff(check);
     publicBrowserTests(check);
