@@ -5,7 +5,7 @@ Local Arch packaging for OMAWIN365. See [docs/PACKAGING.md](../docs/PACKAGING.md
 ## `freerdp/`: private FreeRDP provider
 
 - **Source:** FreeRDP commit `97eff6ddfbbfaa8e42a126d362686bd001ff8bdc` (3.32.2), from a pinned GitHub archive with a fixed SHA-256. 3.32.2 already keeps wildcard certificate names such as `*.wvd.microsoft.com` ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)).
-- **Patch:** `0001-rdpewa-allow-overlapping-channels.patch` exempts the WebAuthn channel from 3.32.2's one-connection-per-channel guard, so security keys work inside the Cloud PC. See [docs/FREERDP.md](../docs/FREERDP.md#the-private-provider-package).
+- **Patch:** `0001-rdpewa-allow-overlapping-channels.patch` exempts the WebAuthn channel from 3.32.2's one-connection-per-channel guard, so security keys work inside the Cloud PC. See [docs/PACKAGING.md](../docs/PACKAGING.md#two-packages).
 - **Configuration** (`configure.sh`): SSO MIB off, WebAuthn channel on (upstream default is off; needs `libfido2` and `libcbor`), camera client off, X11 and Azure AD sign-in on, private prefix `/usr/lib/omawin365/freerdp`, and git version detection off so the build reports `3.32.2 (n/a)`.
 - **Checks:** `check-contract.py` fails the build if the CMake cache drifts from the 231 feature flags in `accepted-features.txt` or from the version and shared-library settings.
 - **Install layout:** a complete private FreeRDP under `/usr/lib/omawin365/freerdp`, with `bin/xfreerdp3` linking to `xfreerdp`. It doesn't provide, replace or conflict with Arch's `freerdp`, and adds no global links. Upstream's Apache-2.0 licence and the bundled uwac notices are installed.

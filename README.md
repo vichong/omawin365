@@ -27,9 +27,9 @@ make test   # needs an X11/XWayland DISPLAY; see docs/TESTING.md
 ./.build/omawin365
 ```
 
-The app needs **FreeRDP 3.32.2 built with `WITH_SSO_MIB=OFF`**. Arch's stock `freerdp` reached 3.32.2 on 2026-10-12, but Omarchy's package mirrors still had 3.31.1 on 2026-10-13, which the app rejects. Until they catch up, the recipe in [`packaging/freerdp`](packaging/freerdp) builds a private copy under `/usr/lib/omawin365/freerdp` without touching the distro package; see [packaging](docs/PACKAGING.md).
+The app needs **FreeRDP 3.32.2 built with `WITH_SSO_MIB=OFF`**. Stock `freerdp` 3.32.2 is in Arch and, as of 2026-10-17, Omarchy's rc mirror (the stable mirror still has 3.31.1, which the app rejects), but it refuses Windows' overlapping WebAuthn channels, so security keys don't work inside the Cloud PC. The upstream fix is in FreeRDP's backlog ([FreeRDP#13741](https://github.com/FreeRDP/FreeRDP/issues/13741)). Until it ships, the recipe in [`packaging/freerdp`](packaging/freerdp) builds a private, patched copy under `/usr/lib/omawin365/freerdp` without touching the distro package; see [packaging](docs/PACKAGING.md).
 
-**Why 3.32.2:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP 3.32.1 and older, when built without uriparser, discard wildcard names, so valid gateways look like a name mismatch. OMAWIN365 never accepts a certificate prompt, so every connection stopped. FreeRDP 3.32.2 fixes this ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)), and the private copy builds it unmodified. Once Omarchy's mirrors carry 3.32.2, the package dependency will move to stock `freerdp`, and the private copy goes away.
+**Why 3.32.2:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP 3.32.1 and older, when built without uriparser, discard wildcard names, so valid gateways look like a name mismatch. OMAWIN365 never accepts a certificate prompt, so every connection stopped. FreeRDP 3.32.2 fixes this ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)). Once Omarchy's mirrors carry a stock `freerdp` with the WebAuthn fix too, the package dependency will move to stock `freerdp`, and the private copy goes away.
 
 ## Session settings
 
