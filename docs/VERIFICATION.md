@@ -37,6 +37,8 @@ On the maintainer's Windows 365 Enterprise tenant, with a hardware security key:
 
 In-session security keys were rechecked on October 20 with provider `3.32.2-4` (upstream's WebAuthn fix plus our hang fix, replacing our own patch): several sign-ins inside the Cloud PC, each with the OMAWIN365 PIN dialog and a touch.
 
+Session settings were checked live on October 20 (rc.6, Omarchy 4.0.6): remote audio playback, microphone forwarding and display scale all worked.
+
 Not yet checked: other tenants, Frontline and other editions, multi-monitor.
 
 ## Remembered sign-in (October 2026)
