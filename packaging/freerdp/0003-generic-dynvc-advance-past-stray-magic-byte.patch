@@ -1,0 +1,28 @@
+OMAWIN365 fix on top of upstream 5b3adfff3b: getFromGeneric() stopped on any byte
+equal to magic[0] ('*') and, if the full magic did not match there, never advanced,
+spinning forever. RDPEWA_PLUGIN keeps a heap pointer before the private segment, so
+a 0x2A byte in that pointer hung the client when the channel opened.
+
+--- a/channels/client/generic_dynvc.c
++++ b/channels/client/generic_dynvc.c
+@@ -51,8 +51,9 @@
+ 	while (memcmp(ptr, magic, sizeof(magic)) != 0)
+ 	{
+ 		/* Skip all values that do not match the first element of the magic pattern.
+-		 * faster than a full memcmp */
+-		while (*ptr != magic[0])
++		 * faster than a full memcmp. ptr is not the magic, so always advance at least once:
++		 * channel data before the private segment can contain the first magic byte. */
++		do
+ 		{
+ 			ptr++;
+ 			count++;
+@@ -64,7 +65,7 @@
+ 				         maxPrivateOffset);
+ 				return nullptr;
+ 			}
+-		}
++		} while (*ptr != magic[0]);
+ 	}
+ 	return WINPR_PACKED_ALIGN_CAST(GENERIC_DYNVC_PLUGIN_PRIVATE*, ptr);
+ }

@@ -8,7 +8,7 @@ A native Qt 6 desktop app (about 6,000 lines of C++ plus one small JavaScript fi
 
 1. **Sign-in.** It starts a private Chromium window, drives Microsoft sign-in over the Chrome DevTools Protocol (anonymous pipes, not a TCP port), and captures the OAuth callback.
 2. **Connection files.** It downloads or imports `.rdpw` connection files, validates them against a strict allowlist, and stores private copies.
-3. **Remote desktop.** It runs FreeRDP 3.32.2 (with one small WebAuthn patch) in a private terminal, answers its sign-in prompts, and relays security-key PIN prompts from a native dialog.
+3. **Remote desktop.** It runs FreeRDP 3.32.2 (with upstream's unreleased WebAuthn fix backported) in a private terminal, answers its sign-in prompts, and relays security-key PIN prompts from a native dialog.
 4. **Remembered sign-in (opt-in).** It can keep Microsoft's sign-in cookies in memory until the app closes, or also save the long-lived ones in the system keyring.
 
 It was written with AI coding agents. It has had extensive AI review but **no human security review yet**. That's why you're here.
@@ -31,7 +31,7 @@ Running against a real Cloud PC also needs the private FreeRDP provider: see `pa
 | FreeRDP process and prompts | `src/session.cpp`, `src/promptparser.cpp` | Parses untrusted terminal output, sends PINs and sign-in replies, manages process lifetime and signals. |
 | Remembered sign-in | `src/signincache.cpp`, `snapshotSignIn` and `prepareFlow` in `src/browserauth.cpp` | Chooses which Microsoft cookies leave the private browser, and when they are restored or deleted. |
 | Connection-file validation | `src/rdpprofile.cpp`, `src/profilestore.cpp` | The only barrier between an attacker-supplied `.rdpw` and FreeRDP's settings. |
-| FreeRDP build | `packaging/freerdp/` | Builds FreeRDP 3.32.2 with fixed options and a contract check; the wildcard certificate fix is upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). One patch, `0001-rdpewa-allow-overlapping-channels.patch`, exempts only the WebAuthn channel from 3.32.2's one-connection-per-channel guard; please review it. |
+| FreeRDP build | `packaging/freerdp/` | Builds FreeRDP 3.32.2 with fixed options and a contract check; the wildcard certificate fix is upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). Three patches let only the WebAuthn channel hold several connections despite 3.32.2's one-connection-per-channel guard: `0001`-`0002` are upstream's fix ([FreeRDP#13781](https://github.com/FreeRDP/FreeRDP/pull/13781)), `0003` is our fix for a hang in `0001`; please review them. |
 
 The enforced rules are summarized in [BOUNDARIES.md](BOUNDARIES.md).
 

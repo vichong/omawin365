@@ -35,6 +35,8 @@ On the maintainer's Windows 365 Enterprise tenant, with a hardware security key:
 - one wrong PIN followed by the correct one,
 - cancelling during sign-in, and unplugging the key during sign-in.
 
+In-session security keys were rechecked on October 20 with provider `3.32.2-4` (upstream's WebAuthn fix plus our hang fix, replacing our own patch): several sign-ins inside the Cloud PC, each with the OMAWIN365 PIN dialog and a touch.
+
 Not yet checked: other tenants, Frontline and other editions, multi-monitor.
 
 ## Remembered sign-in (October 2026)
