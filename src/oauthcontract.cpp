@@ -48,6 +48,20 @@ bool fields(const QUrl& u, QMap<QString,QString>& values) {
 bool shape(const QString& text,const char* pattern) {
     return QRegularExpression(QString::fromLatin1(pattern)).match(text).hasMatch();
 }
+// FreeRDP 3.33 appends login_hint when its user name is a UPN, and xfreerdp
+// defaults that name to the local login. It is accepted only as a bounded
+// user@domain value and removed, so the browser request stays unchanged and the
+// local login name is not sent to Microsoft.
+QUrl withoutLoginHint(const QUrl& u) {
+    QByteArrayList kept;
+    for (const QByteArray& part:u.query(QUrl::FullyEncoded).toUtf8().split('&')) {
+        QString key;
+        if (!decode(part.left(part.indexOf('=')),key) || key!=QStringLiteral("login_hint")) kept.append(part);
+    }
+    QUrl result=u;
+    result.setQuery(QString::fromUtf8(kept.join('&')),QUrl::StrictMode);
+    return result;
+}
 QByteArray encode(const QString& text) {
     QByteArray out;
     const char* digits="0123456789ABCDEF";
@@ -61,14 +75,17 @@ QByteArray encode(const QString& text) {
 namespace OAuthContract {
 std::optional<Request> request(const QUrl& u) {
     QMap<QString,QString> f;
-    if (!origin(u) || !shape(u.path(QUrl::FullyEncoded),"^/[A-Za-z0-9][A-Za-z0-9.-]{0,254}/oauth2/v2\\.0/authorize$") || !fields(u,f) || f.size()!=7) return {};
+    if (!origin(u) || !shape(u.path(QUrl::FullyEncoded),"^/[A-Za-z0-9][A-Za-z0-9.-]{0,254}/oauth2/v2\\.0/authorize$") || !fields(u,f)) return {};
+    const bool hint=f.contains("login_hint");
+    if (hint && !shape(f.value("login_hint"),"^[^\\s@\\\\]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$")) return {};
+    if (f.size()!=(hint?8:7)) return {};
     if (f.value("client_id")!="a85cf173-4192-42f8-81fa-777a763e6e2c" || f.value("response_type")!="code" ||
         f.value("redirect_uri")!=native || f.value("code_challenge_method")!="S256" ||
         !shape(f.value("state"),"^[0-9a-fA-F]{64}$") || !shape(f.value("code_challenge"),"^[A-Za-z0-9_-]{43}$")) return {};
     const QString scope=f.value("scope");
     if (scope!="https://www.wvd.microsoft.com/.default openid profile offline_access" &&
         !shape(scope,"^ms-device-service://termsrv\\.wvd\\.microsoft\\.com/name/[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?/user_impersonation$")) return {};
-    Request result{u,f.value("state"),f.value("code_challenge"),0};
+    Request result{hint?withoutLoginHint(u):u,f.value("state"),f.value("code_challenge"),0};
     result.scope = scope;
     return result;
 }

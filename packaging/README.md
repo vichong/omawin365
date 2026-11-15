@@ -4,10 +4,10 @@ Local Arch packaging for OMAWIN365. See [docs/PACKAGING.md](../docs/PACKAGING.md
 
 ## `freerdp/`: private FreeRDP provider
 
-- **Source:** FreeRDP commit `97eff6ddfbbfaa8e42a126d362686bd001ff8bdc` (3.32.2), from a pinned GitHub archive with a fixed SHA-256. 3.32.2 already keeps wildcard certificate names such as `*.wvd.microsoft.com` ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)).
-- **Patches:** `0001` and `0002` are upstream's WebAuthn fix ([FreeRDP#13781](https://github.com/FreeRDP/FreeRDP/pull/13781), not yet released), which lets the WebAuthn channel hold several connections despite 3.32.2's one-connection-per-channel guard, so security keys work inside the Cloud PC. `0003` is ours and fixes a hang in `0001`. See [docs/PACKAGING.md](../docs/PACKAGING.md#two-packages).
-- **Configuration** (`configure.sh`): SSO MIB off, WebAuthn channel on (upstream default is off; needs `libfido2` and `libcbor`), camera client off, X11 and Azure AD sign-in on, private prefix `/usr/lib/omawin365/freerdp`, and git version detection off so the build reports `3.32.2 (n/a)`.
-- **Checks:** `check-contract.py` fails the build if the CMake cache drifts from the 231 feature flags in `accepted-features.txt` or from the version and shared-library settings.
+- **Source:** FreeRDP commit `65bcca1913a28cbdd7eb913599f692bd2b707991` (3.33.1), from a pinned GitHub archive with a fixed SHA-256. It already keeps wildcard certificate names such as `*.wvd.microsoft.com` ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)).
+- **Patches:** none. The WebAuthn fix ([FreeRDP#13781](https://github.com/FreeRDP/FreeRDP/pull/13781)) and its hang fix ([FreeRDP#13815](https://github.com/FreeRDP/FreeRDP/pull/13815)) are in 3.33.0 and later, so the former patches `0001`-`0003` were dropped. See [docs/PACKAGING.md](../docs/PACKAGING.md#two-packages).
+- **Configuration** (`configure.sh`): SSO MIB off, WebAuthn channel on (upstream default is off; needs `libfido2` and `libcbor`), camera client off, X11 and Azure AD sign-in on, private prefix `/usr/lib/omawin365/freerdp`, and git version detection off so the build reports `3.33.1 (n/a)`.
+- **Checks:** `check-contract.py` fails the build if the CMake cache drifts from the 235 feature flags in `accepted-features.txt` or from the version and shared-library settings.
 - **Install layout:** a complete private FreeRDP under `/usr/lib/omawin365/freerdp`, with `bin/xfreerdp3` linking to `xfreerdp`. It doesn't provide, replace or conflict with Arch's `freerdp`, and adds no global links. Upstream's Apache-2.0 licence and the bundled uwac notices are installed.
 
 ## `app/`: application

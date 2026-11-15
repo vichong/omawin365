@@ -1,7 +1,7 @@
 # Local prototype, NOT submission/release approval. See ../README.md.
 pkgname=omawin365-freerdp
-pkgver=3.32.2
-pkgrel=4
+pkgver=3.33.1
+pkgrel=1
 pkgdesc='Private FreeRDP provider for OMAWIN365 (SSO and camera client off)'
 arch=('x86_64')
 url='https://www.freerdp.com/'
@@ -13,35 +13,14 @@ depends=('alsa-lib' 'e2fsprogs' 'ffmpeg' 'fuse3' 'glibc' 'icu' 'jansson'
          'libxkbcommon' 'libxkbfile' 'libxrandr' 'libxrender' 'libxv'
          'openssl' 'pcsclite' 'sndio' 'systemd-libs' 'wayland' 'zlib')
 makedepends=('cmake' 'pkgconf' 'python')
-_commit=97eff6ddfbbfaa8e42a126d362686bd001ff8bdc
+_commit=65bcca1913a28cbdd7eb913599f692bd2b707991
 source=("FreeRDP-$_commit.tar.gz::https://github.com/FreeRDP/FreeRDP/archive/$_commit.tar.gz"
-        'configure.sh' 'accepted-features.txt' 'check-contract.py' 'uwac-NOTICES.txt'
-        '0001-channels-client-add-generic-DVC-entry-with-options.patch'
-        '0002-channels-rdpewa-allow-multiple-instances.patch'
-        '0003-generic-dynvc-advance-past-stray-magic-byte.patch')
-sha256sums=('e99ebb8bbdd2608fd54fcc8b15c510f89dbc05b166c48339d1b1edea0b30f3c8'
+        'configure.sh' 'accepted-features.txt' 'check-contract.py' 'uwac-NOTICES.txt')
+sha256sums=('97771fc4b967b4262bbe690f9b666402ad4c717717527c006b4acea8e21fffb8'
             '7c38b8f3c3a8d5e3efbc33c37a324b3873d10a437be2a10ad2d31658f39dc61c'
-            '25fc95967fb3578d75b944ebe1c82b766f41043256751e727557133ab63eb8ea'
-            'a4fc968a30c8bfae2a342ca65629ed1dc766057544db4e2e2e24d00f41a8df57'
-            'fb1fb33971be8d78ec542c502f0f6c93f1b67228692cb160c394ef239d94cf64'
-            '6a0e84edaba673363349499e41f417b0fda43ba69f352890879cd72d9f634d65'
-            '99a4fcea0a25e05f514dc784df249363a57a192da0af5af3456530297175c45d'
-            '90f4b598fa03ac75c98f5b1432dae4dc958a4fac1de5f4b3e1ee50e01017734f')
-
-prepare() {
-  # 3.32.2 (f682dc83c2, FreeRDP#13612) lets each generic dynamic channel hold
-  # only one connection. Windows can open a new WebAuthN_Channel before the
-  # previous one closes, so in-session security keys failed (FreeRDP#13741).
-  # 0001-0002 are upstream's fix (FreeRDP#13781, 5b3adfff3b and 65059a1a9b);
-  # 0003 is ours and fixes a hang in 0001's private-data search.
-  local p
-  for p in 0001-channels-client-add-generic-DVC-entry-with-options.patch \
-           0002-channels-rdpewa-allow-multiple-instances.patch \
-           0003-generic-dynvc-advance-past-stray-magic-byte.patch; do
-    patch --directory="$srcdir/FreeRDP-$_commit" --strip=1 --fuzz=0 --forward \
-      < "$srcdir/$p" || return 1
-  done
-}
+            'c43941ca167c4305d64e90e1e4dcf4ea95d6adae9ba6ca8ade68245c9e538e1b'
+            '393811bc55b69c953de40b810236042081963097acad69e2cf3db4ff04c98271'
+            'fb1fb33971be8d78ec542c502f0f6c93f1b67228692cb160c394ef239d94cf64')
 
 build() {
   # Recipe chooses cmake via explicit PATH discovery, never inherited CMAKE.

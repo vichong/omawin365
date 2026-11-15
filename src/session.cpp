@@ -270,7 +270,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         if (state_->versionCheck == State::VersionCheck::Checking) {
             const qsizetype limit = state_->buildProbe ? 32768 : 4096;
             if (state_->probeOutput.size() + bytes.size() >= limit)
-                fail(QStringLiteral("FreeRDP 3.32.2 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+                fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
             else state_->probeOutput.append(bytes);
         }
         clearBytes(bytes);
@@ -280,7 +280,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         state_->probeErrorBytes += bytes.size();
         clearBytes(bytes);
         if (state_->versionCheck == State::VersionCheck::Checking && state_->probeErrorBytes >= 32768)
-            fail(QStringLiteral("FreeRDP 3.32.2 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
     });
     state_->authTimer.setSingleShot(true);
     connect(&state_->authTimer, &QTimer::timeout, this, [this] {
@@ -301,7 +301,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         bool supported = code == 0 && exit == QProcess::NormalExit && state_->probeErrorBytes == 0;
         if (!state_->buildProbe) {
             static const QRegularExpression expected(QStringLiteral(
-                "\\AThis is FreeRDP version (?:\\[[^\\]\\r\\n]+\\] )?3\\.32\\.2(?: \\([^\\r\\n]*\\))?\\r?\\n?\\z"));
+                "\\AThis is FreeRDP version (?:\\[[^\\]\\r\\n]+\\] )?3\\.33\\.1(?: \\([^\\r\\n]*\\))?\\r?\\n?\\z"));
             supported = supported && version.size() < 4096 && expected.match(QString::fromLatin1(version)).hasMatch();
         } else {
             const QString text = QString::fromLatin1(version);
@@ -317,7 +317,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         }
         clearBytes(version);
         if (!supported) {
-            fail(QStringLiteral("FreeRDP 3.32.2 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
             return;
         }
         if (!state_->buildProbe) {

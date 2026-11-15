@@ -8,7 +8,7 @@ A native Qt 6 desktop app (about 6,000 lines of C++ plus one small JavaScript fi
 
 1. **Sign-in.** It starts a private Chromium window, drives Microsoft sign-in over the Chrome DevTools Protocol (anonymous pipes, not a TCP port), and captures the OAuth callback.
 2. **Connection files.** It downloads or imports `.rdpw` connection files, validates them against a strict allowlist, and stores private copies.
-3. **Remote desktop.** It runs FreeRDP 3.32.2 (with upstream's unreleased WebAuthn fix backported) in a private terminal, answers its sign-in prompts, and relays security-key PIN prompts from a native dialog.
+3. **Remote desktop.** It runs FreeRDP 3.33.1 in a private terminal, answers its sign-in prompts, and relays security-key PIN prompts from a native dialog.
 4. **Remembered sign-in (opt-in).** It can keep Microsoft's sign-in cookies in memory until the app closes, or also save the long-lived ones in the system keyring.
 
 It was written with AI coding agents. It has had extensive AI review but **no human security review yet**. That's why you're here.
@@ -31,7 +31,7 @@ Running against a real Cloud PC also needs the private FreeRDP provider: see `pa
 | FreeRDP process and prompts | `src/session.cpp`, `src/promptparser.cpp` | Parses untrusted terminal output, sends PINs and sign-in replies, manages process lifetime and signals. |
 | Remembered sign-in | `src/signincache.cpp`, `snapshotSignIn` and `prepareFlow` in `src/browserauth.cpp` | Chooses which Microsoft cookies leave the private browser, and when they are restored or deleted. |
 | Connection-file validation | `src/rdpprofile.cpp`, `src/profilestore.cpp` | The only barrier between an attacker-supplied `.rdpw` and FreeRDP's settings. |
-| FreeRDP build | `packaging/freerdp/` | Builds FreeRDP 3.32.2 with fixed options and a contract check; the wildcard certificate fix is upstream as [FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653). Three patches let only the WebAuthn channel hold several connections despite 3.32.2's one-connection-per-channel guard: `0001`-`0002` are upstream's fix ([FreeRDP#13781](https://github.com/FreeRDP/FreeRDP/pull/13781)), `0003` is our fix for a hang in `0001`; please review them. |
+| FreeRDP build | `packaging/freerdp/` | Builds plain FreeRDP 3.33.1, with no patches, fixed options and a contract check. The wildcard certificate fix ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)) and the WebAuthn multi-instance fix ([FreeRDP#13781](https://github.com/FreeRDP/FreeRDP/pull/13781), [FreeRDP#13815](https://github.com/FreeRDP/FreeRDP/pull/13815)) are upstream. |
 
 The enforced rules are summarized in [BOUNDARIES.md](BOUNDARIES.md).
 
@@ -47,7 +47,7 @@ The enforced rules are summarized in [BOUNDARIES.md](BOUNDARIES.md).
 
 - Independent AI reviews (Claude Code CLI and Codex), a written threat model, and a findings ledger with a verdict and evidence for every item: summary in [VERIFICATION.md](VERIFICATION.md).
 - Confirmed findings fixed with failing-then-passing tests, including an IP-literal bypass of the hostname rule, a foreign-frame download substitution, and a gateway host that could be anything in an imported file (reported in [#1](https://github.com/vichong/omawin365/issues/1)).
-- All suites pass under ASan and UBSan with leak detection; clang static analyzer clean; bounded fuzzing of the prompt parser and file import.
+- The original six suites passed under ASan and UBSan with leak detection, the clang static analyzer was clean, and the prompt parser and file import had bounded fuzzing. These runs predate remembered sign-in; see [VERIFICATION.md](VERIFICATION.md).
 - An `strace` of a live session: file, process and network activity. It led to keeping Chromium crash data private and blocking Chromium's Google background services.
 
 ## Known and accepted risks
@@ -55,7 +55,7 @@ The enforced rules are summarized in [BOUNDARIES.md](BOUNDARIES.md).
 - **Same-user attackers are out of scope.** A process running as the same user can already read the 0600 stores or swap files between validation and use.
 - **Chromium and FreeRDP are trusted dependencies.** Two Chromium background requests to Google remain on purpose (`accounts.google.com`, `www.google.com`), so Google-federated sign-in keeps working.
 - **Remembered sign-in on this device** puts Microsoft's long-lived sign-in cookies in the keyring. Anything that can read the unlocked keyring can reuse them until they expire or Microsoft revokes them. It's off by default.
-- **No cleanup guarantee after a crash or kill.** Leftovers stay in the user's memory-backed runtime directory until logout; swap is not covered.
+- **No cleanup guarantee after a crash or kill.** The browser profile stays in `$XDG_RUNTIME_DIR` until logout, and FreeRDP's config stays under `$TMPDIR` or `/tmp`, which can be disk-backed; see [BOUNDARIES.md](BOUNDARIES.md). Swap is not covered.
 - **The app icon is a redrawn Windows 365 mark**, used under the trademark notice in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 ## Reporting

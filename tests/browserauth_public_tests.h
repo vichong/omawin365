@@ -663,6 +663,31 @@ void publicBrowserTests(const std::function<void(bool, const char*)>& outerCheck
         browser.cancel();
         ++cases;
     }
+    {
+        // A direct caller passing FreeRDP 3.33's raw request still navigates without login_hint.
+        SyntheticRuntime runtime;
+        BrowserAuth browser;
+        BrowserAuthTestAccess::useSyntheticBrowser(browser, "code", runtime.trace());
+        int callbacks = 0, failures = 0;
+        QObject::connect(&browser, &BrowserAuth::callbackReady, [&] { ++callbacks; });
+        QObject::connect(&browser, &BrowserAuth::failed, [&] { ++failures; });
+        const QByteArray plain = syntheticAuthorization().toEncoded();
+        const QByteArray hinted = plain + "&login_hint=first.last%2Btag%40example.invalid";
+        browser.begin(OAuthContract::Request(QUrl::fromEncoded(hinted, QUrl::StrictMode)));
+        QStringList navigated;
+        check(eventually([&] {
+                  navigated.clear();
+                  for (const auto& item : transcript(runtime.trace()))
+                      if (item.value("method") == "Page.navigate")
+                          navigated.append(item.value("params").toObject().value("url").toString());
+                  return callbacks == 1;
+              }) && failures == 0 && !navigated.isEmpty()
+              && navigated.front() == QUrl::fromEncoded(plain, QUrl::StrictMode).toString(QUrl::FullyEncoded)
+              && !navigated.join(' ').contains("login_hint") && !navigated.join(' ').contains("example.invalid"),
+              "authorization navigation removes login_hint from a raw request");
+        browser.cancel();
+        ++cases;
+    }
     for (const auto& scenario : {"unowned-first", "duplicate-event"}) {
         SyntheticRuntime runtime;
         BrowserAuth browser;

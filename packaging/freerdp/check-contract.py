@@ -21,7 +21,7 @@ def check(build, features, elf=None):
     if any(x.startswith('BUILTIN_CHANNELS:') for x in cache):
         raise ValueError('unsupported BUILTIN_CHANNELS override')
     version = (build / 'include/freerdp/version.h').read_text()
-    for line in ('#define FREERDP_VERSION_FULL "3.32.2"', '#define FREERDP_GIT_REVISION "n/a"'):
+    for line in ('#define FREERDP_VERSION_FULL "3.33.1"', '#define FREERDP_GIT_REVISION "n/a"'):
         if version.splitlines().count(line) != 1:
             raise ValueError('unexpected generated version: ' + line)
     entries = json.loads((build / 'compile_commands.json').read_text())

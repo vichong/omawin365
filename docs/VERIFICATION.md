@@ -1,10 +1,10 @@
 # What has been verified
 
-Status as of October 2026. "Verified" means observed or tested as described, not a security certification.
+Status as of November 15, 2026. "Verified" means observed or tested as described, not a security certification.
 
 ## Automated tests
 
-`make test` runs seven suites (profiles, prompt parser, window, two session suites, browser automation and sign-in cache). They use synthetic connection files, a fake FreeRDP, synthetic Chromium and an in-memory Secret Service adapter; no Microsoft account, real profile, personal keyring or security key is involved. The original six-suite baseline also passed under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection. Those sanitizer and static-analysis results predate the remembered-sign-in change; its checks are recorded below.
+`make test` runs seven suites (profiles, prompt parser, window, two session suites, browser automation and sign-in cache). They use synthetic connection files, a fake FreeRDP, synthetic Chromium and an in-memory Secret Service adapter; no Microsoft account, real profile, personal keyring or security key is involved. For rc.7 all seven suites pass: 4,203 QtTest checks and 244 browser-automation assertions. The original six-suite baseline also passed under AddressSanitizer and UndefinedBehaviorSanitizer with leak detection. Those sanitizer and static-analysis results predate the remembered-sign-in change; its checks are recorded below.
 
 ## Static and dynamic analysis
 
@@ -38,6 +38,8 @@ On the maintainer's Windows 365 Enterprise tenant, with a hardware security key:
 In-session security keys were rechecked on October 20 with provider `3.32.2-4` (upstream's WebAuthn fix plus our hang fix, replacing our own patch): several sign-ins inside the Cloud PC, each with the OMAWIN365 PIN dialog and a touch.
 
 Session settings were checked live on October 20 (rc.6, Omarchy 4.0.6): remote audio playback, microphone forwarding and display scale all worked.
+
+Provider `3.33.1-1` (plain FreeRDP 3.33.1) was checked live on November 15: sign-in and desktop, remote audio playback, and the in-session security key (OMAWIN365 PIN dialog, then touch). `xfreerdp` averaged about 3% CPU over the first eight minutes. Cancelling from the PIN dialog and unplugging the key twice during in-session sign-ins left the app responsive, with no hang or crash. Not yet rechecked with `3.33.1-1`: a wrong PIN, the microphone, clipboard, resizing, and keyboard modifiers after Hyprland shortcuts.
 
 Not yet checked: other tenants, Frontline and other editions, multi-monitor.
 

@@ -369,7 +369,26 @@ void PromptParserTest::modernRequestContract_data()
     altered("incomplete-key-utf8", "client_id=", "client_id%F0%9F%92=");
     altered("control", "client_id=", "client_id=%00");
     QTest::newRow("decoded-duplicate") << (original + "&%73tate=" + QByteArray(64, 'a')) << false;
-    QTest::newRow("unknown-field") << (original + "&login_hint=fixture") << false;
+    QTest::newRow("unknown-field") << (original + "&prompt=login") << false;
+    // FreeRDP 3.33: optional login_hint from a UPN user name, accepted and removed.
+    QTest::newRow("login-hint-upn") << (original + "&login_hint=fixture%40example.invalid") << true;
+    QTest::newRow("login-hint-first") << ("login_hint=fixture%40example.invalid&" + original) << true;
+    QTest::newRow("login-hint-encoded-key") << (original + "&%6Cogin_hint=fixture%40example.invalid") << true;
+    QTest::newRow("login-hint-middle") << QByteArray(original).replace("&response_type=", "&login_hint=fixture%40example.invalid&response_type=") << true;
+    QTest::newRow("login-hint-plus-local") << (original + "&login_hint=first.last%2Btag_x-y%40sub.example.invalid") << true;
+    QTest::newRow("login-hint-encoded-duplicate") << (original + "&login_hint=a%40example.invalid&%6Cogin_hint=a%40example.invalid") << false;
+    QTest::newRow("login-hint-empty-part") << (original + "&&login_hint=fixture%40example.invalid") << false;
+    QTest::newRow("login-hint-trailing-amp") << (original + "&login_hint=fixture%40example.invalid&") << false;
+    QTest::newRow("login-hint-unicode-domain") << (original + "&login_hint=fixture%40ex%C3%A4mple.invalid") << false;
+    QTest::newRow("login-hint-not-upn") << (original + "&login_hint=fixture") << false;
+    QTest::newRow("login-hint-empty") << (original + "&login_hint=") << false;
+    QTest::newRow("login-hint-backslash") << (original + "&login_hint=DOMAIN%5Cfixture%40example.invalid") << false;
+    QTest::newRow("login-hint-space") << (original + "&login_hint=fix+ture%40example.invalid") << false;
+    QTest::newRow("login-hint-two-at") << (original + "&login_hint=a%40b%40example.invalid") << false;
+    QTest::newRow("login-hint-control") << (original + "&login_hint=fixture%40example.invalid%0A") << false;
+    QTest::newRow("login-hint-long-user") << (original + "&login_hint=" + QByteArray(65, 'u') + "%40example.invalid") << false;
+    QTest::newRow("login-hint-duplicate") << (original + "&login_hint=a%40example.invalid&login_hint=b%40example.invalid") << false;
+    QTest::newRow("login-hint-plus-unknown") << (original + "&login_hint=fixture%40example.invalid&prompt=login") << false;
 }
 
 void PromptParserTest::modernRequestContract()
@@ -383,7 +402,14 @@ void PromptParserTest::modernRequestContract()
     const auto events = parser.feed("Browse to: " + raw + "\nPaste redirect URL here: ");
     QCOMPARE(containsKind(events, PromptParser::Kind::Authorization), accepted);
     if (accepted) {
-        QCOMPARE(contract->authorization, QUrl::fromEncoded(raw, QUrl::StrictMode));
+        // The browser gets the request without login_hint; other fields keep their order and encoding.
+        QByteArrayList kept;
+        for (const QByteArray& part : query.split('&'))
+            if (!part.startsWith("login_hint=") && !part.startsWith("%6Cogin_hint=")) kept.append(part);
+        const QByteArray browser = authorization.left(authorization.indexOf('?') + 1) + kept.join('&');
+        QCOMPARE(contract->authorization.toEncoded(), QUrl::fromEncoded(browser, QUrl::StrictMode).toEncoded());
+        QVERIFY(!contract->authorization.toEncoded().contains("ogin_hint"));
+        QVERIFY(OAuthContract::request(contract->authorization));
         QVERIFY(events.front().authorization);
         QCOMPARE(events.front().authorization->state, contract->state);
     }

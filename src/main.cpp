@@ -95,7 +95,7 @@ struct AuthenticationDiagnostics {
             target |= scope.startsWith(QLatin1String("ms-device-service://termsrv.wvd.microsoft.com/name/")) &&
                       scope.endsWith(QLatin1String("/user_impersonation"));
         }
-        // FreeRDP 3.32.2: settings.c gateway scope and aad.c target scope.
+        // FreeRDP 3.33.1: settings.c gateway scope and aad.c target scope.
         // These buckets are diagnostic hints, never authentication decisions.
         record(gateway && !target ? QStringLiteral("authorization-stage-gateway") :
                target && !gateway ? QStringLiteral("authorization-stage-desktop") :

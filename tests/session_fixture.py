@@ -29,7 +29,7 @@ if version:
     if settings.get("version_crash"):
         os.kill(os.getpid(), signal.SIGKILL)
     time.sleep(settings.get("version_delay", 0))
-    sys.stdout.write(settings.get("version", "This is FreeRDP version 3.32.2\n"))
+    sys.stdout.write(settings.get("version", "This is FreeRDP version 3.33.1\n"))
     sys.stdout.flush()
     sys.exit(settings.get("version_exit", 0))
 

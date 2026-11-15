@@ -98,6 +98,36 @@ private slots:
         QTest::newRow("exact-4095-unicode") << (QString(3948, 'x') + "%E2%82%AC") << (QByteArray(3948, 'x') + "%E2%82%AC");
         QTest::newRow("exact-4095") << QString(3957, 'x') << QByteArray(3957, 'x');
     }
+    void composedAuthorizationLoginHint()
+    {
+        // FreeRDP 3.33 adds login_hint when the local login is a UPN; the browser
+        // round must see the request without it and still complete.
+        SessionFixture fixture;
+        QVERIFY(fixture.init());
+        BrowserAuth browser;
+        QVERIFY(BrowserAuthTestAccess::inertTransport(browser));
+        QSignalSpy callbacks(&browser, &BrowserAuth::callbackReady);
+        QSignalSpy failures(&browser, &BrowserAuth::failed);
+        QObject::connect(&fixture.session, &Session::authRequested, &browser, &BrowserAuth::begin);
+        QObject::connect(&browser, &BrowserAuth::callbackReady, &fixture.session, &Session::submitAuthResult);
+        fixture.session.start(fixture.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.events(QStringLiteral("terminal")).size(), 1, 3000);
+        QVERIFY(fixture.output(fixtureAuthorization(
+            "&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&login_hint=fixture%40example.invalid")) > 0);
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.auth.count(), 1, 3000);
+        const auto transaction = fixture.auth.last().at(0).value<OAuthContract::Request>();
+        QVERIFY(!transaction.authorization.toEncoded().contains("login_hint"));
+        QVERIFY(!transaction.authorization.toEncoded().contains("example.invalid"));
+        QVERIFY(OAuthContract::request(transaction.authorization));
+        BrowserAuthTestAccess::adoptPage(browser);
+        QCOMPARE(failures.count(), 0);
+        const QUrl url = fixtureCallback("code=fixture&state=" + transaction.state);
+        BrowserAuthTestAccess::callback(browser, url);
+        QTRY_COMPARE_WITH_TIMEOUT(callbacks.count(), 1, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.input(),
+            "https://login.microsoftonline.com/common/oauth2/nativeclient?code=fixture&state=" + transaction.state.toUtf8() + '\n', 3000);
+        QCOMPARE(failures.count(), 0);
+    }
     void composedAuthorization()
     {
         QFETCH(QString, code);
@@ -296,14 +326,15 @@ private slots:
         QTest::addColumn<QString>("version");
         QTest::addColumn<int>("code");
         QTest::addColumn<bool>("supported");
-        QTest::newRow("stock") << QStringLiteral("This is FreeRDP version 3.32.2\n") << 0 << true;
-        QTest::newRow("package-prefix") << QStringLiteral("This is FreeRDP version [fixture] 3.32.2 (build)\n") << 0 << true;
+        QTest::newRow("stock") << QStringLiteral("This is FreeRDP version 3.33.1\n") << 0 << true;
+        QTest::newRow("package-prefix") << QStringLiteral("This is FreeRDP version [fixture] 3.33.1 (build)\n") << 0 << true;
         QTest::newRow("legacy-3.31.1") << QStringLiteral("This is FreeRDP version 3.31.1\n") << 0 << false;
-        QTest::newRow("previous-3.32.1") << QStringLiteral("This is FreeRDP version 3.32.1\n") << 0 << false;
+        QTest::newRow("previous-3.32.2") << QStringLiteral("This is FreeRDP version 3.32.2\n") << 0 << false;
+        QTest::newRow("previous-3.33.0") << QStringLiteral("This is FreeRDP version 3.33.0\n") << 0 << false;
         QTest::newRow("wrong-version") << QStringLiteral("This is FreeRDP version 3.31.2\n") << 0 << false;
-        QTest::newRow("suffix-not-version") << QStringLiteral("This is FreeRDP version 3.32.20\n") << 0 << false;
-        QTest::newRow("nonzero") << QStringLiteral("This is FreeRDP version 3.32.2\n") << 1 << false;
-        QTest::newRow("oversized") << (QStringLiteral("This is FreeRDP version 3.32.2\n") + QString(4096, 'x')) << 0 << false;
+        QTest::newRow("suffix-not-version") << QStringLiteral("This is FreeRDP version 3.33.10\n") << 0 << false;
+        QTest::newRow("nonzero") << QStringLiteral("This is FreeRDP version 3.33.1\n") << 1 << false;
+        QTest::newRow("oversized") << (QStringLiteral("This is FreeRDP version 3.33.1\n") + QString(4096, 'x')) << 0 << false;
     }
     void publicVersionGate()
     {
@@ -326,7 +357,7 @@ private slots:
         } else {
             QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
             QCOMPARE(fixture.errors.count(), 1);
-            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP 3.32.2 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
         }
         QVERIFY(!fixture.session.active());
         QTest::qWait(100);

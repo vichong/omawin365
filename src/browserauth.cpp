@@ -1540,7 +1540,8 @@ void BrowserAuth::begin(const OAuthContract::Request& request)
         return;
     }
     d->cancelRound(true);
-    d->auth = {authorizationUrl, contract};
+    // Navigate to the validated request (login_hint removed), not the caller's copy.
+    d->auth = {contract->authorization, contract};
     d->auth.contract->generation = request.generation;
     d->mode = Private::Mode::Authentication;
     d->active = true;
