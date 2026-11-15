@@ -164,6 +164,7 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
     m_sessionLabel = label({}, statusPanel, "muted");
     m_sessionLabel->hide();
     m_detailLabel = label(QStringLiteral("Select a Cloud PC to connect."), statusPanel);
+    m_detailLabel->setAccessibleName(QStringLiteral("Connection detail"));
     m_progressNote = label({}, statusPanel, "muted");
     m_progressNote->hide();
     m_statusLayout->addWidget(m_phaseLabel);
@@ -355,7 +356,9 @@ Window::Window(Session* session, BrowserAuth* browser, ProfileStore* profiles, Q
         m_connected = true;
         m_browser->cancel(); // The desktop is up: the sign-in window's job is done.
         if (m_phase != "awaiting-pin" && m_phase != "awaiting-touch")
-            setStatus("connected", QStringLiteral("Your desktop is connected in its own FreeRDP window."));
+            setStatus("connected", m_session->inSessionKeysSupported()
+                ? QStringLiteral("Your desktop is connected in its own FreeRDP window.")
+                : QStringLiteral("Your desktop is connected in its own FreeRDP window. Security keys inside the Cloud PC may not work with FreeRDP 3.32.2; 3.33.1 or later fixes this."));
         updateControls();
     });
     connect(m_session, &Session::pinRequested, this, &Window::requestPin);

@@ -12,6 +12,7 @@
 namespace WindowFixture {
 struct Controls {
     bool active = false;
+    bool inSessionKeys = true;
     int rememberSignIn = 0; // BrowserAuth::RememberSignIn
     int forgets = 0;
     int savedForgets = 0;

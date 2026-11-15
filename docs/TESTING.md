@@ -5,7 +5,7 @@ make -j4
 make test
 ```
 
-Run from the source checkout. Seven suites exercise profiles, retained Session, public Session, Window, prompt parsing, BrowserAuth and the sign-in cache. QtTest totals include setup/cleanup; BrowserAuth reports assertions separately.
+Run from the source checkout. Seven suites exercise profiles, retained Session, public Session, Window, prompt parsing, BrowserAuth and the sign-in cache. Totals are 4,224 QtTest checks plus 244 browser-automation assertions, all passing for v0.2.0. QtTest totals include setup/cleanup; BrowserAuth reports assertions separately, so don't add the two together.
 
 Additional prerequisites:
 

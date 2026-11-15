@@ -224,6 +224,7 @@ struct Session::State {
     std::optional<OAuthContract::Request> authTransaction;
     QTimer authTimer;
     bool buildProbe = false;
+    bool inSessionKeys = true;
     QByteArray probeOutput;
     qsizetype probeErrorBytes = 0;
     Display* display = nullptr;
@@ -235,6 +236,25 @@ struct Session::State {
         config.reset();
     }
 };
+
+// Where FreeRDP's aad_auth_helper_auto_locate looks (3.32.2, 3.33.1): the client's
+// own directory and its ../libexec, which is also <prefix>/libexec for both the
+// distro package and omawin365-freerdp.
+static QString installedSignInHelper(const QString& executable)
+{
+    const QString client = QFileInfo(executable).canonicalFilePath();
+    if (client.isEmpty())
+        return QStringLiteral("unknown location");
+    const QDir bin = QFileInfo(client).absoluteDir();
+    for (const QString& dir : {bin.absolutePath(), bin.absoluteFilePath(QStringLiteral("../libexec"))}) {
+        for (const char* name : {"freerdp-xdg-aad-helper", "freerdp-qt-aad-helper", "freerdp-webview-aad-helper"}) {
+            const QString path = QDir::cleanPath(dir + u'/' + QLatin1StringView(name));
+            if (QFileInfo::exists(path))
+                return path;
+        }
+    }
+    return {};
+}
 
 Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<State>())
 {
@@ -270,7 +290,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         if (state_->versionCheck == State::VersionCheck::Checking) {
             const qsizetype limit = state_->buildProbe ? 32768 : 4096;
             if (state_->probeOutput.size() + bytes.size() >= limit)
-                fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+                fail(QStringLiteral("FreeRDP 3.32.2 or 3.33.1 and later 3.33 releases, built with WITH_SSO_MIB=OFF, is required; executable verification failed."));
             else state_->probeOutput.append(bytes);
         }
         clearBytes(bytes);
@@ -280,7 +300,7 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         state_->probeErrorBytes += bytes.size();
         clearBytes(bytes);
         if (state_->versionCheck == State::VersionCheck::Checking && state_->probeErrorBytes >= 32768)
-            fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.32.2 or 3.33.1 and later 3.33 releases, built with WITH_SSO_MIB=OFF, is required; executable verification failed."));
     });
     state_->authTimer.setSingleShot(true);
     connect(&state_->authTimer, &QTimer::timeout, this, [this] {
@@ -300,9 +320,14 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
         QByteArray version = std::move(state_->probeOutput);
         bool supported = code == 0 && exit == QProcess::NormalExit && state_->probeErrorBytes == 0;
         if (!state_->buildProbe) {
+            // 3.32.2 (Omarchy's stock package for now) and 3.33.1 or a later 3.33
+            // release. 3.33.0 is refused for its TLS and audio regressions. Prompts
+            // are still matched byte for byte, so a changed prompt fails closed.
             static const QRegularExpression expected(QStringLiteral(
-                "\\AThis is FreeRDP version (?:\\[[^\\]\\r\\n]+\\] )?3\\.33\\.1(?: \\([^\\r\\n]*\\))?\\r?\\n?\\z"));
-            supported = supported && version.size() < 4096 && expected.match(QString::fromLatin1(version)).hasMatch();
+                "\\AThis is FreeRDP version (?:\\[[^\\]\\r\\n]+\\] )?(3\\.32\\.2|3\\.33\\.[1-9][0-9]{0,2})(?: \\([^\\r\\n]*\\))?\\r?\\n?\\z"));
+            const auto match = expected.match(QString::fromLatin1(version));
+            supported = supported && version.size() < 4096 && match.hasMatch();
+            state_->inSessionKeys = !supported || match.captured(1) != QStringLiteral("3.32.2");
         } else {
             const QString text = QString::fromLatin1(version);
             static const QRegularExpression flag(QStringLiteral("(?:^|\\s)WITH_SSO_MIB=([^\\s]+)"));
@@ -314,10 +339,23 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
             supported = supported && version.size() < 32768 &&
                 text.contains(QStringLiteral("Build configuration:")) && count == 1 && off &&
                 text.count(QStringLiteral("WITH_SSO_MIB")) == 1;
+            // xfreerdp asks an external sign-in helper for tokens before falling
+            // back to console sign-in. Require the three known helpers built OFF.
+            static const QRegularExpression helper(QStringLiteral("(?:^|\\s)WITH_([A-Z0-9_]+)_AAD_AUTH_HELPER=([^\\s]+)"));
+            QStringList helpersOff;
+            bool helperOn = false;
+            for (auto it = helper.globalMatch(text); it.hasNext();) {
+                const auto m = it.next();
+                if (m.captured(2) == QStringLiteral("OFF")) helpersOff.append(m.captured(1));
+                else helperOn = true;
+            }
+            helpersOff.sort();
+            supported = supported && !helperOn &&
+                helpersOff == QStringList{QStringLiteral("QT"), QStringLiteral("WEBVIEW"), QStringLiteral("XDG")};
         }
         clearBytes(version);
         if (!supported) {
-            fail(QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            fail(QStringLiteral("FreeRDP 3.32.2 or 3.33.1 and later 3.33 releases, built with WITH_SSO_MIB=OFF, is required; executable verification failed."));
             return;
         }
         if (!state_->buildProbe) {
@@ -326,6 +364,10 @@ Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<Sta
             state_->versionCheck = State::VersionCheck::Checking;
             state_->versionProcess.start(state_->executable, {QStringLiteral("/buildconfig")});
             if (state_->versionCheck == State::VersionCheck::Checking) state_->versionTimer.start(5000);
+            return;
+        }
+        if (const QString found = installedSignInHelper(state_->executable); !found.isEmpty()) {
+            fail(QStringLiteral("FreeRDP would use an external Microsoft sign-in helper (%1) instead of OMAWIN365's sign-in. Remove it to connect.").arg(found));
             return;
         }
         startTransport(state_->profilePath);
@@ -391,6 +433,11 @@ bool Session::active() const
     return state_->versionCheck != State::VersionCheck::Idle || state_->child > 0;
 }
 
+bool Session::inSessionKeysSupported() const
+{
+    return state_->inSessionKeys;
+}
+
 void Session::start(const QString& profilePath, const LaunchOptions& options)
 {
     // Terminal delivery/finalization must finish before a receiver can replace it.
@@ -406,11 +453,12 @@ void Session::start(const QString& profilePath, const LaunchOptions& options)
     state_->clearAttempt();
     state_->profilePath = profilePath;
     state_->options = options;
+    state_->inSessionKeys = true;
     if (state_->options.desktopScale < 100 || state_->options.desktopScale > 500)
         state_->options.desktopScale = 100;
     state_->executable = QStandardPaths::findExecutable(QStringLiteral("xfreerdp3"));
     if (state_->executable.isEmpty()) {
-        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the omawin365-freerdp package."));
+        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the freerdp package."));
         return;
     }
     verifyExecutable();
@@ -419,6 +467,7 @@ void Session::start(const QString& profilePath, const LaunchOptions& options)
 void Session::verifyExecutable()
 {
     state_->buildProbe = false;
+    state_->inSessionKeys = true;
     clearBytes(state_->probeOutput);
     state_->probeErrorBytes = 0;
     state_->versionProcess.setProcessEnvironment(freerdpEnvironment());
@@ -440,7 +489,7 @@ void Session::startTransport(const QString& profilePath)
         return;
     }
     if (executable.isEmpty()) {
-        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the omawin365-freerdp package."));
+        fail(QStringLiteral("xfreerdp3 was not found on PATH; install the freerdp package."));
         return;
     }
     // Revalidate every transport launch. Leave old

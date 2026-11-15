@@ -9,6 +9,7 @@ struct Session::State {};
 Session::Session(QObject* parent) : QObject(parent), state_(std::make_unique<State>()) {}
 Session::~Session() = default;
 bool Session::active() const { return controls.active; }
+bool Session::inSessionKeysSupported() const { return controls.inSessionKeys; }
 void Session::setDiagnosticsEnabled(bool) {}
 void Session::start(const QString& path, const LaunchOptions& options)
 {

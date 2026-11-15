@@ -10,7 +10,7 @@ Start with the [security review brief](docs/SECURITY-REVIEW-BRIEF.md). Report an
 
 ## Code changes
 
-- Keep changes focused. Preserve the core rules: explicit Connect only, strict connection-file validation, private memory-backed sign-in storage, state/PKCE checks, and never answering a certificate prompt.
+- Keep changes focused. Preserve the core rules: explicit Connect only, strict connection-file validation, private memory-backed sign-in storage, state/PKCE checks, never answering a certificate prompt, and refusing FreeRDP builds outside the accepted versions or with an external sign-in helper.
 - For a bug, add a test that fails before your fix and passes after.
 - Run `make test` (see [tests](docs/TESTING.md)).
 

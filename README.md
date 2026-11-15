@@ -2,7 +2,7 @@
 
 ![OMAWIN365](docs/banner.png)
 
-**Pre-release. Looking for reviewers.** OMAWIN365 is a native Qt launcher for Windows 365 Cloud PCs on Omarchy/Arch. It signs in to Microsoft in a private Chromium window and opens your Cloud PC with FreeRDP in a separate window. Importing a connection never connects automatically.
+**Early release. Looking for reviewers.** OMAWIN365 is a native Qt launcher for Windows 365 Cloud PCs on Omarchy/Arch. It signs in to Microsoft in a private Chromium window and opens your Cloud PC with FreeRDP in a separate window. Importing a connection never connects automatically.
 
 **Why it exists: your security key works *inside* the Cloud PC.** Signing in to Windows 365 with a FIDO2 security key works in supported browsers, Omarchy included. But in my testing the browser-based client couldn't redirect a local key into the remote session, so sign-ins *inside* the Cloud PC (Microsoft 365, admin portals, websites) can't use it. OMAWIN365 uses FreeRDP's WebAuthn redirection: when something in the session asks for your key, a native PIN prompt appears on your Omarchy desktop, and you touch your local key. No raw USB passthrough is involved.
 
@@ -13,9 +13,9 @@ It works end to end with Windows 365 Enterprise on the maintainer's tenant, incl
 - in-session security-key sign-ins (native PIN prompt, then touch),
 - reconnect, cancel and wrong-PIN recovery.
 
-Sign-in, audio and in-session security keys were rechecked with FreeRDP 3.33.1; see [verification](docs/VERIFICATION.md).
+Sign-in, audio and in-session security keys were rechecked with FreeRDP 3.33.1. Omarchy's stock FreeRDP 3.32.2 was checked live on November 15: sign-in, microphone and an in-session key worked, and no camera reached the Cloud PC. See [verification](docs/VERIFICATION.md).
 
-Other tenants and editions are untested. It has had extensive AI-assisted review but **no independent human security review yet**. Please [help review it](#help-review-it) before trusting it with a work account.
+Other tenants and editions are untested. It has had extensive AI-assisted review but **no independent human security review yet** (v1.0.0 waits for one). Please [help review it](#help-review-it) before trusting it with a work account.
 
 Not affiliated with, endorsed by or supported by Microsoft or Omarchy. Microsoft, Windows, Windows 365 and the redrawn Windows 365 mark are Microsoft trademarks, used here only for identification. Provided **as-is, without warranty**, under the [MIT license](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md).
 
@@ -29,9 +29,9 @@ make test   # needs an X11/XWayland DISPLAY; see docs/TESTING.md
 ./.build/omawin365
 ```
 
-The app needs **FreeRDP 3.33.1 built with `WITH_SSO_MIB=OFF`**. Arch has `freerdp` 3.33.1, but Omarchy's mirrors still serve 3.32.2, which refuses Windows' overlapping WebAuthn channels, so security keys don't work inside the Cloud PC ([FreeRDP#13741](https://github.com/FreeRDP/FreeRDP/issues/13741), fixed in 3.33.0). Until Omarchy's mirrors catch up, the recipe in [`packaging/freerdp`](packaging/freerdp) builds plain FreeRDP 3.33.1 under `/usr/lib/omawin365/freerdp` without touching the distro package; see [packaging](docs/PACKAGING.md).
+The app needs the distro's **`freerdp` package: 3.32.2, or 3.33.1 and later 3.33 releases**, built with `WITH_SSO_MIB=OFF` and without external Microsoft sign-in helpers. Arch has 3.33.1, but Omarchy's mirrors still serve 3.32.2. With 3.32.2 the app connects, but security keys inside the Cloud PC are unreliable: 3.32.2 refuses Windows' overlapping WebAuthn channels ([FreeRDP#13741](https://github.com/FreeRDP/FreeRDP/issues/13741), fixed in 3.33.0), so Windows can fall back to its own prompt, and the app says so once connected. For reliable in-session keys before Omarchy's mirrors catch up, also install the optional `omawin365-freerdp` package: [`packaging/freerdp`](packaging/freerdp) builds plain FreeRDP 3.33.1 under `/usr/lib/omawin365/freerdp`, and the packaged launcher uses it when it is installed. For a plain `make` build, run with `PATH=/usr/lib/omawin365/freerdp/bin:$PATH` to use it. See [packaging](docs/PACKAGING.md).
 
-**Why 3.33.1:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP 3.32.1 and older, when built without uriparser, discard wildcard names, so valid gateways look like a name mismatch, and OMAWIN365 never accepts a certificate prompt. 3.32.2 fixed that ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)), 3.33.0 fixed in-session security keys and several client security issues, and 3.33.1 fixes regressions in 3.33.0. Once Omarchy's mirrors carry it and a live in-session security-key test passes, the package dependency moves to stock `freerdp`, and the private copy goes away.
+**Why these versions:** Microsoft's gateways use wildcard certificates (`*.wvd.microsoft.com`). FreeRDP 3.32.1 and older, when built without uriparser, discard wildcard names, so valid gateways look like a name mismatch, and OMAWIN365 never accepts a certificate prompt. 3.32.2 fixed that ([FreeRDP#13653](https://github.com/FreeRDP/FreeRDP/pull/13653)). 3.33.0 fixed in-session security keys and several client security issues, but had regressions that 3.33.1 fixes, so 3.33.0 is refused. 3.32.2 is accepted because Omarchy ships it; it lacks those fixes. Once Omarchy's mirrors carry 3.33.1 or later, 3.32.2 support and the optional provider can go.
 
 ## Session settings
 

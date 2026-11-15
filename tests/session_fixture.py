@@ -41,7 +41,7 @@ if buildconfig:
     time.sleep(settings.get("buildconfig_delay", 0))
     sys.stderr.write(settings.get("buildconfig_stderr", ""))
     sys.stderr.flush()
-    sys.stdout.write(settings.get("buildconfig", "Build configuration: WITH_SSO_MIB=OFF WITH_AAD=ON\n"))
+    sys.stdout.write(settings.get("buildconfig", "Build configuration: WITH_SSO_MIB=OFF WITH_AAD=ON WITH_QT_AAD_AUTH_HELPER=OFF WITH_WEBVIEW_AAD_AUTH_HELPER=OFF WITH_XDG_AAD_AUTH_HELPER=OFF\n"))
     sys.stdout.flush()
     sys.exit(settings.get("buildconfig_exit", 0))
 

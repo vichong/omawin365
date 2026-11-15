@@ -813,6 +813,30 @@ private slots:
         settle();
         QVERIFY(controls.starts.isEmpty());
     }
+    void connectedNotesMissingInSessionKeys_data()
+    {
+        QTest::addColumn<bool>("keys");
+        QTest::newRow("freerdp-3.33") << true;
+        QTest::newRow("freerdp-3.32.2") << false;
+    }
+    void connectedNotesMissingInSessionKeys()
+    {
+        QFETCH(bool, keys);
+        seed("First");
+        openWindow();
+        QVERIFY(click(window.get(), "Connect"));
+        QCOMPARE(controls.starts.size(), 1);
+        controls.active = true;
+        controls.inSessionKeys = keys;
+        emit session->connected();
+        QCOMPARE(phase()->text(), "Connected");
+        const QString detail = accessible<QLabel>(window.get(), "Connection detail")->text();
+        QCOMPARE(detail.contains("may not work with FreeRDP 3.32.2"), !keys);
+        QVERIFY(detail.startsWith("Your desktop is connected in its own FreeRDP window."));
+        QVERIFY(click(window.get(), "Disconnect"));
+        finish();
+        settle();
+    }
     void explicitConnectActions_data()
     {
         QTest::addColumn<QString>("action");

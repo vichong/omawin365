@@ -16,4 +16,4 @@ Expect an acknowledgement within a week. This is a volunteer project with no bug
 
 ## Scope
 
-In scope: the app (`src/`), its tests and the FreeRDP build recipe in `packaging/freerdp`. Same-user attackers (another process running as you) and bugs in Chromium, FreeRDP or Qt themselves are out of scope. Please report those upstream, though we're glad to hear how they affect this app. The [review brief](docs/SECURITY-REVIEW-BRIEF.md) lists the known, accepted risks.
+In scope: the app (`src/`), its tests, the FreeRDP version, build and sign-in-helper checks it applies to the distro `freerdp`, and the packaging recipes in `packaging/` (the optional FreeRDP provider in `packaging/freerdp`, the app package and the OPR recipe). Same-user attackers (another process running as you) and bugs in Chromium, FreeRDP or Qt themselves are out of scope. Please report those upstream, though we're glad to hear how they affect this app. The [review brief](docs/SECURITY-REVIEW-BRIEF.md) lists the known, accepted risks.

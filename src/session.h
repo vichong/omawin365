@@ -21,6 +21,10 @@ public:
     explicit Session(QObject* parent = nullptr);
     ~Session() override;
     bool active() const;
+    // False when the verified FreeRDP is 3.32.2, which refuses Windows'
+    // overlapping WebAuthn channels (FreeRDP#13741), so security keys inside
+    // the Cloud PC fall back to Windows' own prompt. Valid after a version check.
+    bool inSessionKeysSupported() const;
     void setDiagnosticsEnabled(bool enabled);
 
 public slots:

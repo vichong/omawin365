@@ -235,14 +235,47 @@ private slots:
     {
         QTest::addColumn<QString>("config");
         QTest::addColumn<bool>("supported");
-        QTest::newRow("off") << QStringLiteral("Build configuration: WITH_AAD=ON WITH_SSO_MIB=OFF\n") << true;
-        QTest::newRow("missing") << QStringLiteral("Build configuration: WITH_AAD=ON\n") << false;
-        QTest::newRow("on") << QStringLiteral("Build configuration: WITH_SSO_MIB=ON\n") << false;
-        QTest::newRow("unknown") << QStringLiteral("Build configuration: WITH_SSO_MIB=0\n") << false;
-        QTest::newRow("duplicate") << QStringLiteral("Build configuration: WITH_SSO_MIB=OFF WITH_SSO_MIB=OFF\n") << false;
-        QTest::newRow("conflict") << QStringLiteral("Build configuration: WITH_SSO_MIB=OFF WITH_SSO_MIB=ON\n") << false;
-        QTest::newRow("embedded") << QStringLiteral("Build configuration: XWITH_SSO_MIB=OFF\n") << false;
-        QTest::newRow("oversized") << (QStringLiteral("Build configuration: WITH_SSO_MIB=OFF\n") + QString(32768, 'x')) << false;
+        const QString h = QStringLiteral(" WITH_QT_AAD_AUTH_HELPER=OFF WITH_WEBVIEW_AAD_AUTH_HELPER=OFF WITH_XDG_AAD_AUTH_HELPER=OFF");
+        const auto row = [](const char* tag, const QString& config, bool supported) { QTest::newRow(tag) << config << supported; };
+        row("off", "Build configuration: WITH_AAD=ON WITH_SSO_MIB=OFF" + h + "\n", true);
+        row("missing", "Build configuration: WITH_AAD=ON" + h + "\n", false);
+        row("on", "Build configuration: WITH_SSO_MIB=ON" + h + "\n", false);
+        row("unknown", "Build configuration: WITH_SSO_MIB=0" + h + "\n", false);
+        row("duplicate", "Build configuration: WITH_SSO_MIB=OFF WITH_SSO_MIB=OFF" + h + "\n", false);
+        row("conflict", "Build configuration: WITH_SSO_MIB=OFF WITH_SSO_MIB=ON" + h + "\n", false);
+        row("embedded", "Build configuration: XWITH_SSO_MIB=OFF" + h + "\n", false);
+        row("oversized", "Build configuration: WITH_SSO_MIB=OFF" + h + "\n" + QString(32768, 'x'), false);
+        // External sign-in helpers would replace OMAWIN365's sign-in.
+        row("helper-flags-missing", QStringLiteral("Build configuration: WITH_SSO_MIB=OFF\n"), false);
+        row("helper-xdg-on", QStringLiteral("Build configuration: WITH_SSO_MIB=OFF WITH_QT_AAD_AUTH_HELPER=OFF WITH_WEBVIEW_AAD_AUTH_HELPER=OFF WITH_XDG_AAD_AUTH_HELPER=ON\n"), false);
+        row("helper-one-missing", QStringLiteral("Build configuration: WITH_SSO_MIB=OFF WITH_QT_AAD_AUTH_HELPER=OFF WITH_XDG_AAD_AUTH_HELPER=OFF\n"), false);
+        row("helper-unknown-value", QStringLiteral("Build configuration: WITH_SSO_MIB=OFF WITH_QT_AAD_AUTH_HELPER=0 WITH_WEBVIEW_AAD_AUTH_HELPER=OFF WITH_XDG_AAD_AUTH_HELPER=OFF\n"), false);
+        row("helper-unknown-name", "Build configuration: WITH_SSO_MIB=OFF" + h + " WITH_GTK_AAD_AUTH_HELPER=OFF\n", false);
+        row("helper-duplicate", "Build configuration: WITH_SSO_MIB=OFF" + h + " WITH_QT_AAD_AUTH_HELPER=OFF\n", false);
+    }
+    void publicSignInHelperBinaryRefused_data()
+    {
+        QTest::addColumn<QString>("helper");
+        for (const char* name : {"freerdp-xdg-aad-helper", "freerdp-qt-aad-helper", "freerdp-webview-aad-helper"})
+            QTest::newRow(name) << QString::fromLatin1(name);
+    }
+    void publicSignInHelperBinaryRefused()
+    {
+        // A helper next to xfreerdp3 would be auto-detected by FreeRDP and used first.
+        QFETCH(QString, helper);
+        SessionFixture fixture;
+        QVERIFY(fixture.init());
+        QVERIFY(fixture.write(helper, "#!/bin/sh\n"));
+        fixture.session.start(fixture.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
+        QCOMPARE(fixture.errors.count(), 1);
+        QVERIFY(fixture.errors.at(0).at(0).toString().startsWith("FreeRDP would use an external Microsoft sign-in helper ("));
+        QCOMPARE(fixture.events(QStringLiteral("transport")).size(), 0);
+        QVERIFY(QFile::remove(fixture.path(helper)));
+        fixture.session.start(fixture.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.events(QStringLiteral("terminal")).size(), 1, 3000);
+        fixture.session.stop();
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 2, 3000);
     }
     void publicBuildconfigGate()
     {
@@ -326,21 +359,63 @@ private slots:
         QTest::addColumn<QString>("version");
         QTest::addColumn<int>("code");
         QTest::addColumn<bool>("supported");
-        QTest::newRow("stock") << QStringLiteral("This is FreeRDP version 3.33.1\n") << 0 << true;
-        QTest::newRow("package-prefix") << QStringLiteral("This is FreeRDP version [fixture] 3.33.1 (build)\n") << 0 << true;
-        QTest::newRow("legacy-3.31.1") << QStringLiteral("This is FreeRDP version 3.31.1\n") << 0 << false;
-        QTest::newRow("previous-3.32.2") << QStringLiteral("This is FreeRDP version 3.32.2\n") << 0 << false;
-        QTest::newRow("previous-3.33.0") << QStringLiteral("This is FreeRDP version 3.33.0\n") << 0 << false;
-        QTest::newRow("wrong-version") << QStringLiteral("This is FreeRDP version 3.31.2\n") << 0 << false;
-        QTest::newRow("suffix-not-version") << QStringLiteral("This is FreeRDP version 3.33.10\n") << 0 << false;
-        QTest::newRow("nonzero") << QStringLiteral("This is FreeRDP version 3.33.1\n") << 1 << false;
-        QTest::newRow("oversized") << (QStringLiteral("This is FreeRDP version 3.33.1\n") + QString(4096, 'x')) << 0 << false;
+        QTest::addColumn<bool>("keys");
+        const auto row = [](const char* tag, const QString& version, int code, bool supported, bool keys = true) {
+            QTest::newRow(tag) << version << code << supported << keys;
+        };
+        row("provider-3.33.1", QStringLiteral("This is FreeRDP version 3.33.1\n"), 0, true);
+        row("package-prefix", QStringLiteral("This is FreeRDP version [fixture] 3.33.1 (build)\n"), 0, true);
+        row("later-3.33.2", QStringLiteral("This is FreeRDP version 3.33.2\n"), 0, true);
+        row("later-3.33.10", QStringLiteral("This is FreeRDP version 3.33.10\n"), 0, true);
+        row("later-3.33.999", QStringLiteral("This is FreeRDP version 3.33.999\n"), 0, true);
+        // Arch's stock 3.32.2-1 output; works, but without in-session security keys.
+        row("arch-3.32.2", QStringLiteral("This is FreeRDP version 3.32.2 (97eff6ddfb)\n"), 0, true, false);
+        row("plain-3.32.2", QStringLiteral("This is FreeRDP version 3.32.2\n"), 0, true, false);
+        row("legacy-3.31.1", QStringLiteral("This is FreeRDP version 3.31.1\n"), 0, false);
+        row("previous-3.32.1", QStringLiteral("This is FreeRDP version 3.32.1\n"), 0, false);
+        row("unknown-3.32.3", QStringLiteral("This is FreeRDP version 3.32.3\n"), 0, false);
+        row("regressed-3.33.0", QStringLiteral("This is FreeRDP version 3.33.0\n"), 0, false);
+        row("leading-zero", QStringLiteral("This is FreeRDP version 3.33.01\n"), 0, false);
+        row("too-long-patch", QStringLiteral("This is FreeRDP version 3.33.1000\n"), 0, false);
+        row("next-minor", QStringLiteral("This is FreeRDP version 3.34.0\n"), 0, false);
+        row("suffix-not-version", QStringLiteral("This is FreeRDP version 3.32.20\n"), 0, false);
+        row("dev-build", QStringLiteral("This is FreeRDP version 3.33.1-dev0\n"), 0, false);
+        row("nonzero", QStringLiteral("This is FreeRDP version 3.33.1\n"), 1, false);
+        row("oversized", QStringLiteral("This is FreeRDP version 3.33.1\n") + QString(4096, 'x'), 0, false);
+    }
+    void publicInSessionKeysFollowEachAttempt()
+    {
+        // The capability belongs to the attempt that verified it, not an earlier one.
+        SessionFixture fixture;
+        QVERIFY(fixture.init({{"version", QStringLiteral("This is FreeRDP version 3.32.2 (97eff6ddfb)\n")}}));
+        fixture.session.start(fixture.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.events(QStringLiteral("terminal")).size(), 1, 3000);
+        QVERIFY(!fixture.session.inSessionKeysSupported());
+        fixture.session.stop();
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
+        // An attempt that fails before any executable is found still resets it.
+        QVERIFY(QFile::rename(fixture.path(QStringLiteral("xfreerdp3")), fixture.path(QStringLiteral("hidden"))));
+        fixture.session.start(fixture.profile());
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.errors.count(), 1, 3000);
+        QVERIFY(fixture.session.inSessionKeysSupported());
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture.session.active(), 3000);
+        QVERIFY(QFile::rename(fixture.path(QStringLiteral("hidden")), fixture.path(QStringLiteral("xfreerdp3"))));
+        QVERIFY(fixture.write(QStringLiteral("settings.json"),
+            QJsonDocument(QJsonObject{{"version", "This is FreeRDP version 3.33.1\n"}, {"version_delay", 1}}).toJson()));
+        fixture.session.start(fixture.profile());
+        QVERIFY(fixture.session.inSessionKeysSupported()); // Reset before the new check finishes.
+        QTRY_COMPARE_WITH_TIMEOUT(fixture.events(QStringLiteral("terminal")).size(), 2, 4000);
+        QVERIFY(fixture.session.inSessionKeysSupported());
+        fixture.session.stop();
+        QTRY_VERIFY_WITH_TIMEOUT(!fixture.session.active(), 3000);
+        QCOMPARE(fixture.errors.count(), 1);
     }
     void publicVersionGate()
     {
         QFETCH(QString, version);
         QFETCH(int, code);
         QFETCH(bool, supported);
+        QFETCH(bool, keys);
         SessionFixture fixture;
         QVERIFY(fixture.init({{"version", version}, {"version_exit", code}}));
         QVERIFY(!fixture.session.active());
@@ -352,12 +427,13 @@ private slots:
             QCOMPARE(fixture.errors.count(), 0);
             QCOMPARE(fixture.ended.count(), 0);
             QVERIFY(fixtureHasPhase(fixture.statuses, QStringLiteral("connecting")));
+            QCOMPARE(fixture.session.inSessionKeysSupported(), keys);
             fixture.session.stop();
             QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
         } else {
             QTRY_COMPARE_WITH_TIMEOUT(fixture.ended.count(), 1, 3000);
             QCOMPARE(fixture.errors.count(), 1);
-            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP 3.33.1 built with WITH_SSO_MIB=OFF is required (the omawin365-freerdp package); executable verification failed."));
+            QCOMPARE(fixture.errors.at(0).at(0).toString(), QStringLiteral("FreeRDP 3.32.2 or 3.33.1 and later 3.33 releases, built with WITH_SSO_MIB=OFF, is required; executable verification failed."));
         }
         QVERIFY(!fixture.session.active());
         QTest::qWait(100);
